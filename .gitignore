@@ -20,6 +20,9 @@ npm-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# артефакты браузерной автоматизации
+.playwright-mcp/
+
 # локальные выгрузки геометрии и временные артефакты
 /exports/
 /tmp/

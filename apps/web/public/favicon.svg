@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <style>
+    .ink { fill: #0a0a0a; }
+    .line { stroke: #0a0a0a; }
+    @media (prefers-color-scheme: dark) {
+      .ink { fill: #f2f2f2; }
+      .line { stroke: #f2f2f2; }
+    }
+  </style>
+  <!-- знак: сплошной квадрат в угловых засечках -->
+  <rect class="ink" x="10" y="10" width="12" height="12" />
+  <g class="line" fill="none" stroke-width="2">
+    <path d="M3 8V3h5" />
+    <path d="M24 3h5v5" />
+    <path d="M29 24v5h-5" />
+    <path d="M8 29H3v-5" />
+  </g>
+</svg>

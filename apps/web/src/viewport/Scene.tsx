@@ -29,6 +29,7 @@ function usePalette() {
       clay: dark ? '#333333' : '#e4e4e4',
       glass: dark ? '#4a4a4a' : '#cfcfcf',
       edge: dark ? '#f2f2f2' : '#0a0a0a',
+      label: dark ? '#0a0a0a' : '#ffffff',
       grid: dark ? '#2e2e2e' : '#dedede',
       gridSection: dark ? '#4a4a4a' : '#b4b4b4',
     }),
@@ -89,22 +90,43 @@ interface OrbitLike {
   update: () => void
 }
 
+/** Угол обзора перспективной камеры, °. */
+const FOV = 38
+
+/** Направление взгляда «три четверти сверху» — привычный для CAD ракурс. */
+const VIEW_DIR = new THREE.Vector3(1, 0.62, 1).normalize()
+
 function CameraRig({ height, radius }: { height: number; radius: number }) {
   const fitToken = useViewport((s) => s.fitToken)
   const projection = useViewport((s) => s.projection)
-  const { camera, controls, invalidate } = useThree()
+  const { camera, controls, size, invalidate } = useThree()
 
   useEffect(() => {
-    const distance = Math.max(height * 1.15, radius * 5)
-    camera.position.set(distance * 0.66, Math.max(height * 0.8, 12), distance * 0.66)
+    // Вписываем описанную сферу объекта, а не «примерно высоту»: иначе высокая
+    // башня обрезается сверху и снизу, а низкий объект теряется вдали.
+    const center = new THREE.Vector3(0, height / 2, 0)
+    const sphere = Math.hypot(radius, height / 2) * 1.1
+    const aspect = size.width / Math.max(size.height, 1)
+
+    if ((camera as THREE.OrthographicCamera).isOrthographicCamera) {
+      const ortho = camera as THREE.OrthographicCamera
+      ortho.zoom = (Math.min(size.width, size.height) / (2 * sphere)) * 0.92
+      ortho.position.copy(VIEW_DIR).multiplyScalar(sphere * 4).add(center)
+    } else {
+      const vFov = (FOV * Math.PI) / 180
+      const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect)
+      const distance = sphere / Math.sin(Math.min(vFov, hFov) / 2)
+      camera.position.copy(VIEW_DIR).multiplyScalar(distance).add(center)
+    }
+
     const orbit = controls as unknown as OrbitLike | null
     if (orbit?.target) {
-      orbit.target.set(0, height * 0.42, 0)
+      orbit.target.copy(center)
       orbit.update()
     }
     camera.updateProjectionMatrix()
     invalidate()
-  }, [fitToken, projection, height, radius, camera, controls, invalidate])
+  }, [fitToken, projection, height, radius, size, camera, controls, invalidate])
 
   return null
 }
@@ -278,18 +300,18 @@ export function Scene() {
   const gizmo = useViewport((s) => s.gizmo)
   const loaded = useLoadedModel((s) => s.object)
   const pal = usePalette()
-  const { size } = useThree()
+  const invalidate = useThree((s) => s.invalidate)
 
   const height = towerHeight(params)
   const radius = params.radius * MM
-  const orthoZoom = Math.max(2, size.height / Math.max(height * 1.6, 1))
 
   return (
     <>
+      {/* Ракурс и зум задаёт CameraRig — здесь только тип камеры. */}
       {projection === 'persp' ? (
-        <PerspectiveCamera makeDefault fov={38} near={0.1} far={4000} />
+        <PerspectiveCamera makeDefault fov={FOV} near={0.1} far={8000} />
       ) : (
-        <OrthographicCamera makeDefault zoom={orthoZoom} near={-2000} far={4000} />
+        <OrthographicCamera makeDefault near={-4000} far={8000} />
       )}
       <CameraRig height={loaded ? 60 : height} radius={loaded ? 30 : radius} />
       <SceneStats deps={loaded ?? params} />
@@ -316,13 +338,25 @@ export function Scene() {
 
       {loaded ? <primitive object={loaded} /> : <Tower />}
 
-      <OrbitControls makeDefault enableDamping={false} maxPolarAngle={Math.PI / 2 - 0.01} />
+      {/*
+        Вьюпорт рисует по требованию, поэтому каждое движение камеры обязано само
+        просить кадр — без этого орбита крутится «вслепую»: камера уже повернулась,
+        а на экране висит предыдущий кадр.
+      */}
+      <OrbitControls
+        makeDefault
+        enableDamping={false}
+        onChange={() => invalidate()}
+        maxPolarAngle={Math.PI / 2 - 0.01}
+      />
 
       {gizmo ? (
         <GizmoHelper alignment="bottom-right" margin={[56, 56]}>
+          {/* Оси монохромные, поэтому подпись берём цветом фона — иначе чёрное по чёрному. */}
           <GizmoViewport
             axisColors={[pal.edge, pal.edge, pal.edge]}
-            labelColor={pal.edge}
+            labelColor={pal.label}
+            axisHeadScale={0.9}
             hideNegativeAxes
           />
         </GizmoHelper>

@@ -37,10 +37,10 @@ export function CenterStage() {
       </div>
 
       <div className={s.centerBody}>
-        <div className={s.stage} data-hidden={tab !== 'viewport' || undefined}>
+        <div className={s.stage} data-hidden={tab !== 'viewport' || undefined} inert={tab !== 'viewport'}>
           <Viewport />
         </div>
-        <div className={s.stage} data-hidden={tab !== 'nodes' || undefined}>
+        <div className={s.stage} data-hidden={tab !== 'nodes' || undefined} inert={tab !== 'nodes'}>
           <NodeGraph />
         </div>
       </div>

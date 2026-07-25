@@ -14,6 +14,7 @@ import {
   type Edge,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import { Maximize2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { t } from '../i18n'
 import { useLayout } from '../store/layout'
@@ -121,10 +122,13 @@ function Graph() {
   const graph = useSession((x) => x.graph)
   const setGraph = useSession((x) => x.setGraph)
   const theme = useLayout((x) => x.theme)
+  const tab = useLayout((x) => x.tab)
 
   const [nodes, setNodes, onNodesChange] = useNodesState<ComplexFlowNode>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [paletteOpen, setPaletteOpen] = useState(false)
+  /** Растёт при каждой загрузке документа извне — по нему пересобираем вид. */
+  const [loadTick, setLoadTick] = useState(0)
   const counter = useRef(0)
   /** Документ, который мы сами только что отдали в стор — перечитывать его не нужно. */
   const committed = useRef<GraphDoc | null>(null)
@@ -137,7 +141,18 @@ function Graph() {
     counter.current = graph.nodes.length
     setNodes(toFlowNodes(graph))
     setEdges(toFlowEdges(graph))
+    setLoadTick((t) => t + 1)
   }, [graph, setNodes, setEdges])
+
+  // Вписываем граф, когда вкладка становится активной: при монтировании она
+  // скрыта и нулевого размера, поэтому встроенный fitView отрабатывает вхолостую.
+  // Завязка на loadTick, а не на graph — иначе вид прыгал бы после каждого
+  // перетаскивания узла, ведь оно тоже коммитит документ.
+  useEffect(() => {
+    if (tab !== 'nodes') return
+    const id = setTimeout(() => fitView({ padding: 0.18, duration: 180 }), 90)
+    return () => clearTimeout(id)
+  }, [tab, loadTick, fitView])
 
   const push = useCallback(
     (nextNodes: ComplexFlowNode[], nextEdges: Edge[]) => {
@@ -234,7 +249,8 @@ function Graph() {
           position="top-right"
           nodeColor={minimapColor}
           nodeStrokeWidth={0}
-          maskColor="transparent"
+          nodeBorderRadius={0}
+          maskColor={theme === 'dark' ? 'rgba(242,242,242,.07)' : 'rgba(10,10,10,.06)'}
         />
       </ReactFlow>
 
@@ -246,9 +262,16 @@ function Graph() {
         </div>
       )}
 
-      <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 4, display: paletteOpen ? 'none' : 'block' }}>
-        <IconButton onClick={() => fitView({ duration: 200 })} text={t('nodes.fit')} />
-      </div>
+      {paletteOpen ? null : (
+        <button
+          type="button"
+          className={s.floatBtn}
+          onClick={() => fitView({ padding: 0.18, duration: 200 })}
+        >
+          <Maximize2 size={12} strokeWidth={1} />
+          {t('nodes.fit')}
+        </button>
+      )}
     </div>
   )
 }
