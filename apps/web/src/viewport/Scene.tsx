@@ -109,24 +109,44 @@ function CameraRig({ height, radius }: { height: number; radius: number }) {
   return null
 }
 
-function FrameStats() {
+/**
+ * Треугольники считаем по геометрии, а не по gl.info.render: вьюпорт живёт в
+ * режиме `demand` и в покое кадров не рисует — счётчик рендера остался бы нулём.
+ */
+function countScene(root: THREE.Object3D): { triangles: number; objects: number } {
+  let triangles = 0
+  let objects = 0
+
+  root.traverse((node) => {
+    const mesh = node as THREE.Mesh
+    if (!mesh.isMesh || !mesh.geometry) return
+    objects += 1
+
+    const geometry = mesh.geometry
+    const vertices = geometry.index?.count ?? geometry.attributes.position?.count ?? 0
+    const instanced = mesh as THREE.InstancedMesh
+    triangles += (vertices / 3) * (instanced.isInstancedMesh ? instanced.count : 1)
+  })
+
+  return { triangles: Math.round(triangles), objects }
+}
+
+function SceneStats({ deps }: { deps: unknown }) {
   const setStats = useViewport((s) => s.setStats)
+  const scene = useThree((s) => s.scene)
   const acc = useRef({ time: 0, frames: 0 })
 
-  useFrame((state, delta) => {
+  useEffect(() => {
+    // Считаем в микрозадаче — к этому моменту дети уже смонтированы.
+    const id = setTimeout(() => setStats(countScene(scene)), 0)
+    return () => clearTimeout(id)
+  }, [deps, scene, setStats])
+
+  useFrame((_, delta) => {
     acc.current.time += delta
     acc.current.frames += 1
     if (acc.current.time < 0.5) return
-
-    let meshes = 0
-    state.scene.traverse((o) => {
-      if ((o as THREE.Mesh).isMesh) meshes += 1
-    })
-    setStats({
-      fps: Math.round(acc.current.frames / acc.current.time),
-      triangles: state.gl.info.render.triangles,
-      objects: meshes,
-    })
+    setStats({ fps: Math.round(acc.current.frames / acc.current.time) })
     acc.current = { time: 0, frames: 0 }
   })
 
@@ -139,6 +159,7 @@ function Tower() {
   const params = useViewport((s) => s.params)
   const selected = useViewport((s) => s.selected)
   const select = useViewport((s) => s.select)
+  const mode = useViewport((s) => s.mode)
   const pal = usePalette()
 
   const skin = useMemo(() => buildSkin(params), [params])
@@ -196,7 +217,8 @@ function Tower() {
 
   const r = params.radius * MM
   const h = towerHeight(params)
-  const showEdges = useViewport.getState().mode !== 'wire'
+  // В каркасном режиме рёбра дублировали бы сетку — гасим их.
+  const showEdges = mode !== 'wire'
 
   return (
     <group>
@@ -254,7 +276,6 @@ export function Scene() {
   const projection = useViewport((s) => s.projection)
   const grid = useViewport((s) => s.grid)
   const gizmo = useViewport((s) => s.gizmo)
-  const select = useViewport((s) => s.select)
   const loaded = useLoadedModel((s) => s.object)
   const pal = usePalette()
   const { size } = useThree()
@@ -271,17 +292,11 @@ export function Scene() {
         <OrthographicCamera makeDefault zoom={orthoZoom} near={-2000} far={4000} />
       )}
       <CameraRig height={loaded ? 60 : height} radius={loaded ? 30 : radius} />
-      <FrameStats />
+      <SceneStats deps={loaded ?? params} />
 
       <ambientLight intensity={1.5} />
       <directionalLight position={[40, 80, 30]} intensity={2.2} />
       <directionalLight position={[-50, 30, -40]} intensity={0.7} />
-
-      {/* клик мимо геометрии снимает выделение */}
-      <mesh position={[0, -0.02, 0]} rotation={[-Math.PI / 2, 0, 0]} onClick={() => select(null)}>
-        <planeGeometry args={[4000, 4000]} />
-        <meshBasicMaterial visible={false} />
-      </mesh>
 
       {grid ? (
         <Grid

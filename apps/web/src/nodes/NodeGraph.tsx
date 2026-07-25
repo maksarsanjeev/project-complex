@@ -118,7 +118,7 @@ function Palette({ onPick, onClose }: { onPick: (kind: NodeKind) => void; onClos
 /* ── граф ─────────────────────────────────────────────────────── */
 
 function Graph() {
-  const activeId = useSession((x) => x.activeId)
+  const graph = useSession((x) => x.graph)
   const setGraph = useSession((x) => x.setGraph)
   const theme = useLayout((x) => x.theme)
 
@@ -126,31 +126,39 @@ function Graph() {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [paletteOpen, setPaletteOpen] = useState(false)
   const counter = useRef(0)
+  /** Документ, который мы сами только что отдали в стор — перечитывать его не нужно. */
+  const committed = useRef<GraphDoc | null>(null)
   const { screenToFlowPosition, fitView } = useReactFlow()
 
-  // Граф перечитываем только при смене сессии: локальное состояние React Flow —
-  // рабочая копия, обратно в стор её отдаём явными коммитами.
+  // Следим за самим документом, а не за id сессии: select() выставляет activeId
+  // до того, как придут данные, и по id мы прочитали бы ещё пустой граф.
   useEffect(() => {
-    const doc = useSession.getState().graph
-    counter.current = doc.nodes.length
-    setNodes(toFlowNodes(doc))
-    setEdges(toFlowEdges(doc))
-  }, [activeId, setNodes, setEdges])
+    if (graph === committed.current) return
+    counter.current = graph.nodes.length
+    setNodes(toFlowNodes(graph))
+    setEdges(toFlowEdges(graph))
+  }, [graph, setNodes, setEdges])
 
-  const commit = useCallback(
-    (nextNodes = nodes, nextEdges = edges) => setGraph(toDoc(nextNodes, nextEdges)),
-    [nodes, edges, setGraph],
+  const push = useCallback(
+    (nextNodes: ComplexFlowNode[], nextEdges: Edge[]) => {
+      const doc = toDoc(nextNodes, nextEdges)
+      committed.current = doc
+      setGraph(doc)
+    },
+    [setGraph],
   )
+
+  const commit = useCallback(() => push(nodes, edges), [push, nodes, edges])
 
   const onConnect = useCallback(
     (connection: Connection) => {
       setEdges((current) => {
         const next = addEdge({ ...connection, type: 'step' }, current)
-        setGraph(toDoc(nodes, next))
+        push(nodes, next)
         return next
       })
     },
-    [nodes, setEdges, setGraph],
+    [nodes, setEdges, push],
   )
 
   const addNode = useCallback(
@@ -176,12 +184,12 @@ function Graph() {
       }
       setNodes((current) => {
         const next = [...current, node]
-        setGraph(toDoc(next, edges))
+        push(next, edges)
         return next
       })
       setPaletteOpen(false)
     },
-    [edges, screenToFlowPosition, setNodes, setGraph],
+    [edges, screenToFlowPosition, setNodes, push],
   )
 
   // Tab открывает палитру — как в нодовых редакторах Blender/Houdini.

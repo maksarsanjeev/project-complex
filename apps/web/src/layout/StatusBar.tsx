@@ -30,7 +30,8 @@ export function StatusBar() {
   return (
     <footer className={s.status}>
       <Item label={t('statusbar.engine')} value={engine ? `${engine.label}:${engine.port}` : '—'} />
-      <Item label={t('statusbar.fps')} value={String(stats.fps)} />
+      {/* вьюпорт рисует по требованию — в покое кадров нет, и это не ноль, а прочерк */}
+      <Item label={t('statusbar.fps')} value={stats.fps > 0 ? String(stats.fps) : '—'} />
       <Item label={t('statusbar.tris')} value={stats.triangles.toLocaleString('ru-RU')} />
       <Item label={t('hud.objects')} value={String(stats.objects)} />
       <Item label={t('statusbar.units')} value={t('common.mm')} />
