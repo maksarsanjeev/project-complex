@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 
 export type DisplayMode = 'shaded' | 'wire' | 'clay' | 'xray'
 export type Projection = 'persp' | 'ortho'
@@ -62,52 +63,76 @@ interface ViewportState {
   toggleLocked: (part: PartId) => void
 }
 
-export const useViewport = create<ViewportState>()((set) => ({
-  mode: 'shaded',
-  projection: 'persp',
-  grid: true,
-  gizmo: true,
-  selected: null,
-  params: {
-    floors: 24,
-    floorHeight: 3600,
-    twistDeg: 18,
-    radius: 11000,
-    sides: 6,
-    ribSize: 700,
-  },
-  stats: { fps: 0, triangles: 0, objects: 0 },
-  hidden: NO_FLAGS,
-  locked: NO_FLAGS,
-  droppedName: null,
-  fitToken: 0,
+/**
+ * Настройки вьюпорта и параметры модели переживают перезагрузку.
+ *
+ * Сейчас они общие на приложение. Когда появится gateway, параметры модели
+ * переедут в состояние сессии и будут храниться на сервере — у каждой сессии
+ * своя модель.
+ */
+export const useViewport = create<ViewportState>()(
+  persist(
+    (set) => ({
+      mode: 'shaded',
+      projection: 'persp',
+      grid: true,
+      gizmo: true,
+      selected: null,
+      params: {
+        floors: 24,
+        floorHeight: 3600,
+        twistDeg: 18,
+        radius: 11000,
+        sides: 6,
+        ribSize: 700,
+      },
+      stats: { fps: 0, triangles: 0, objects: 0 },
+      hidden: NO_FLAGS,
+      locked: NO_FLAGS,
+      droppedName: null,
+      fitToken: 0,
 
-  setMode: (mode) => set({ mode }),
-  setProjection: (projection) => set({ projection }),
-  toggleGrid: () => set((s) => ({ grid: !s.grid })),
-  toggleGizmo: () => set((s) => ({ gizmo: !s.gizmo })),
-  select: (selected) => set({ selected }),
+      setMode: (mode) => set({ mode }),
+      setProjection: (projection) => set({ projection }),
+      toggleGrid: () => set((s) => ({ grid: !s.grid })),
+      toggleGizmo: () => set((s) => ({ gizmo: !s.gizmo })),
+      select: (selected) => set({ selected }),
 
-  setParam: (key, value) =>
-    set((s) => ({ params: { ...s.params, [key]: clampParam(key, value) } })),
+      setParam: (key, value) =>
+        set((s) => ({ params: { ...s.params, [key]: clampParam(key, value) } })),
 
-  setStats: (stats) => set((s) => ({ stats: { ...s.stats, ...stats } })),
-  setDropped: (droppedName) => set({ droppedName }),
-  fit: () => set((s) => ({ fitToken: s.fitToken + 1 })),
+      setStats: (stats) => set((s) => ({ stats: { ...s.stats, ...stats } })),
+      setDropped: (droppedName) => set({ droppedName }),
+      fit: () => set((s) => ({ fitToken: s.fitToken + 1 })),
 
-  toggleHidden: (part) =>
-    set((s) => {
-      const hidden = { ...s.hidden, [part]: !s.hidden[part] }
-      // Скрытую часть снимаем с выделения — иначе инспектор показывает невидимое.
-      return { hidden, selected: hidden[part] && s.selected === part ? null : s.selected }
+      toggleHidden: (part) =>
+        set((s) => {
+          const hidden = { ...s.hidden, [part]: !s.hidden[part] }
+          // Скрытую часть снимаем с выделения — иначе инспектор показывает невидимое.
+          return { hidden, selected: hidden[part] && s.selected === part ? null : s.selected }
+        }),
+
+      toggleLocked: (part) =>
+        set((s) => {
+          const locked = { ...s.locked, [part]: !s.locked[part] }
+          return { locked, selected: locked[part] && s.selected === part ? null : s.selected }
+        }),
     }),
-
-  toggleLocked: (part) =>
-    set((s) => {
-      const locked = { ...s.locked, [part]: !s.locked[part] }
-      return { locked, selected: locked[part] && s.selected === part ? null : s.selected }
-    }),
-}))
+    {
+      name: 'complex.viewport',
+      // Сохраняем настройки и модель; измеренное и сиюминутное — нет.
+      partialize: (s) => ({
+        mode: s.mode,
+        projection: s.projection,
+        grid: s.grid,
+        gizmo: s.gizmo,
+        params: s.params,
+        hidden: s.hidden,
+        locked: s.locked,
+      }),
+    },
+  ),
+)
 
 /** Держим параметры в диапазонах, при которых сцена остаётся вменяемой. */
 function clampParam<K extends keyof TowerParams>(key: K, value: TowerParams[K]): TowerParams[K] {

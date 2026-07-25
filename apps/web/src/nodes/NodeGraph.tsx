@@ -14,7 +14,7 @@ import {
   type Edge,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Maximize2 } from 'lucide-react'
+import { Copy, Plus, Trash2, Unlink, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { t } from '../i18n'
 import { useLayout } from '../store/layout'
@@ -97,7 +97,7 @@ function Palette({ onPick, onClose }: { onPick: (kind: NodeKind) => void; onClos
       <div className={s.paletteHead}>
         <Label tone="strong">{t('nodes.palette')}</Label>
         <IconButton onClick={onClose} title={t('common.close')} style={{ marginLeft: 'auto' }}>
-          ×
+          <X size={12} strokeWidth={1} />
         </IconButton>
       </div>
       {groups.map(([group, kinds]) => (
@@ -116,6 +116,14 @@ function Palette({ onPick, onClose }: { onPick: (kind: NodeKind) => void; onClos
   )
 }
 
+/* ── контекстное меню ─────────────────────────────────────────── */
+
+interface MenuState {
+  x: number
+  y: number
+  target: { kind: 'node'; id: string } | { kind: 'edge'; id: string } | { kind: 'pane' }
+}
+
 /* ── граф ─────────────────────────────────────────────────────── */
 
 function Graph() {
@@ -128,14 +136,15 @@ function Graph() {
   const [nodes, setNodes, onNodesChange] = useNodesState<ComplexFlowNode>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [paletteOpen, setPaletteOpen] = useState(false)
-  /** Растёт при каждой загрузке документа извне — по нему пересобираем вид. */
+  /** Куда поставить следующий узел; null — в центр видимой области. */
+  const [dropAt, setDropAt] = useState<{ x: number; y: number } | null>(null)
+  const [menu, setMenu] = useState<MenuState | null>(null)
   const [loadTick, setLoadTick] = useState(0)
-  const counter = useRef(0)
-  /** Документ, который мы сами только что отдали в стор — перечитывать его не нужно. */
+
   const committed = useRef<GraphDoc | null>(null)
-  /** Набор узлов на момент последней перевписки вида. */
   const lastSignature = useRef('')
-  const { screenToFlowPosition, fitView } = useReactFlow()
+  const counter = useRef(0)
+  const { screenToFlowPosition, fitView, getNodes, getEdges, deleteElements } = useReactFlow()
 
   // Следим за самим документом, а не за id сессии: select() выставляет activeId
   // до того, как придут данные, и по id мы прочитали бы ещё пустой граф.
@@ -147,9 +156,7 @@ function Graph() {
     // стор, и без этого узел терял бы выделение на каждом нажатии клавиши.
     setNodes((current) => {
       const selectedIds = new Set(current.filter((n) => n.selected).map((n) => n.id))
-      return toFlowNodes(graph).map((n) =>
-        selectedIds.has(n.id) ? { ...n, selected: true } : n,
-      )
+      return toFlowNodes(graph).map((n) => (selectedIds.has(n.id) ? { ...n, selected: true } : n))
     })
     setEdges(toFlowEdges(graph))
 
@@ -157,19 +164,24 @@ function Graph() {
     const signature = graph.nodes.map((n) => n.id).join(',')
     if (signature !== lastSignature.current) {
       lastSignature.current = signature
-      setLoadTick((t) => t + 1)
+      setLoadTick((v) => v + 1)
     }
   }, [graph, setNodes, setEdges])
 
   // Вписываем граф, когда вкладка становится активной: при монтировании она
   // скрыта и нулевого размера, поэтому встроенный fitView отрабатывает вхолостую.
-  // Завязка на loadTick, а не на graph — иначе вид прыгал бы после каждого
-  // перетаскивания узла, ведь оно тоже коммитит документ.
   useEffect(() => {
     if (tab !== 'nodes') return
     const id = setTimeout(() => fitView({ padding: 0.18, duration: 180 }), 90)
     return () => clearTimeout(id)
   }, [tab, loadTick, fitView])
+
+  // Выделение отдаём в стор эффектом, а не колбэком onSelectionChange:
+  // тот вызывается в фазе рендера React Flow, и запись оттуда роняет
+  // предупреждение «setState во время рендера другого компонента».
+  useEffect(() => {
+    selectNode(nodes.find((n) => n.selected)?.id ?? null)
+  }, [nodes, selectNode])
 
   const push = useCallback(
     (nextNodes: ComplexFlowNode[], nextEdges: Edge[]) => {
@@ -180,17 +192,26 @@ function Graph() {
     [setGraph],
   )
 
-  const commit = useCallback(() => push(nodes, edges), [push, nodes, edges])
+  /**
+   * Снимок берём у React Flow, а не из замыкания рендера: удаление и
+   * перетаскивание сообщают о себе до того, как локальное состояние обновится.
+   */
+  const commitLatest = useCallback(() => {
+    queueMicrotask(() => push(getNodes() as ComplexFlowNode[], getEdges()))
+  }, [getNodes, getEdges, push])
 
+  /**
+   * Новый список считаем заранее и только потом отдаём в стор. Внутри
+   * функции-обновителя setNodes/setEdges этого делать нельзя: она выполняется
+   * в фазе рендера, и запись в стор оттуда ломает React.
+   */
   const onConnect = useCallback(
     (connection: Connection) => {
-      setEdges((current) => {
-        const next = addEdge({ ...connection, type: 'step' }, current)
-        push(nodes, next)
-        return next
-      })
+      const next = addEdge({ ...connection, type: 'step' }, getEdges())
+      setEdges(next)
+      push(getNodes() as ComplexFlowNode[], next)
     },
-    [nodes, setEdges, push],
+    [getEdges, getNodes, setEdges, push],
   )
 
   /**
@@ -220,25 +241,18 @@ function Graph() {
     [nodes, edges],
   )
 
-  // Выделение отдаём в стор эффектом, а не колбэком onSelectionChange:
-  // тот вызывается в фазе рендера React Flow, и запись в стор оттуда роняет
-  // предупреждение «setState во время рендера другого компонента».
-  useEffect(() => {
-    selectNode(nodes.find((n) => n.selected)?.id ?? null)
-  }, [nodes, selectNode])
-
   const addNode = useCallback(
     (kind: NodeKind) => {
       const spec = NODE_KINDS[kind]
       counter.current += 1
       const index = counter.current
+
       const node: ComplexFlowNode = {
-        id: `nd-new-${index}`,
+        id: `nd-new-${index}-${Math.random().toString(36).slice(2, 6)}`,
         type: 'complex',
-        position: screenToFlowPosition({
-          x: window.innerWidth / 2 - 60,
-          y: window.innerHeight / 2 - 120,
-        }),
+        position:
+          dropAt ??
+          screenToFlowPosition({ x: window.innerWidth / 2 - 60, y: window.innerHeight / 2 - 160 }),
         data: {
           code: `ND-${String(index).padStart(2, '0')}`,
           kind,
@@ -249,30 +263,79 @@ function Graph() {
           status: 'pending',
         },
       }
-      setNodes((current) => {
-        const next = [...current, node]
-        push(next, edges)
-        return next
-      })
+
+      const next = [...(getNodes() as ComplexFlowNode[]), node]
+      setNodes(next)
+      push(next, getEdges())
       setPaletteOpen(false)
+      setDropAt(null)
     },
-    [edges, screenToFlowPosition, setNodes, push],
+    [dropAt, getNodes, getEdges, screenToFlowPosition, setNodes, push],
   )
 
-  // Tab открывает палитру — как в нодовых редакторах Blender/Houdini.
+  const duplicateNode = useCallback(
+    (id: string) => {
+      const source = getNodes().find((n) => n.id === id) as ComplexFlowNode | undefined
+      if (!source) return
+      counter.current += 1
+      const index = counter.current
+
+      const copy: ComplexFlowNode = {
+        ...source,
+        id: `nd-copy-${index}-${Math.random().toString(36).slice(2, 6)}`,
+        selected: false,
+        position: { x: source.position.x + 40, y: source.position.y + 40 },
+        data: { ...source.data, code: `ND-${String(index).padStart(2, '0')}` },
+      }
+
+      const next = [...(getNodes() as ComplexFlowNode[]), copy]
+      setNodes(next)
+      push(next, getEdges())
+    },
+    [getNodes, getEdges, setNodes, push],
+  )
+
+  const removeNode = useCallback(
+    (id: string) => {
+      // deleteElements сам уберёт повисшие связи.
+      void deleteElements({ nodes: [{ id }] }).then(commitLatest)
+    },
+    [deleteElements, commitLatest],
+  )
+
+  const removeEdge = useCallback(
+    (id: string) => {
+      void deleteElements({ edges: [{ id }] }).then(commitLatest)
+    },
+    [deleteElements, commitLatest],
+  )
+
+  // Tab открывает палитру — как в нодовых редакторах Blender и Houdini.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null
-      if (target && /^(INPUT|TEXTAREA)$/.test(target.tagName)) return
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
       if (e.key === 'Tab') {
         e.preventDefault()
+        setDropAt(null)
         setPaletteOpen((v) => !v)
       }
-      if (e.key === 'Escape') setPaletteOpen(false)
+      if (e.key === 'Escape') {
+        setPaletteOpen(false)
+        setMenu(null)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
+
+  // Клик мимо закрывает контекстное меню.
+  useEffect(() => {
+    if (!menu) return
+    const close = () => setMenu(null)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [menu])
 
   const minimapColor = theme === 'dark' ? '#f2f2f2' : '#0a0a0a'
 
@@ -286,13 +349,27 @@ function Graph() {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         isValidConnection={isValidConnection}
-        onNodeDragStop={() => commit()}
-        onNodesDelete={() => commit()}
-        onEdgesDelete={() => commit()}
+        onNodeDragStop={commitLatest}
+        onNodesDelete={commitLatest}
+        onEdgesDelete={commitLatest}
+        deleteKeyCode={['Delete', 'Backspace']}
+        onNodeContextMenu={(e, node) => {
+          e.preventDefault()
+          setMenu({ x: e.clientX, y: e.clientY, target: { kind: 'node', id: node.id } })
+        }}
+        onEdgeContextMenu={(e, edge) => {
+          e.preventDefault()
+          setMenu({ x: e.clientX, y: e.clientY, target: { kind: 'edge', id: edge.id } })
+        }}
+        onPaneContextMenu={(e) => {
+          e.preventDefault()
+          const point = { x: e.clientX, y: e.clientY }
+          setDropAt(screenToFlowPosition(point))
+          setMenu({ x: point.x, y: point.y, target: { kind: 'pane' } })
+        }}
         fitView
         minZoom={0.2}
         maxZoom={2.5}
-        proOptions={{ hideAttribution: false }}
       >
         <Background variant={BackgroundVariant.Dots} gap={16} size={1} color={minimapColor} />
         <Controls showInteractive={false} position="bottom-right" />
@@ -308,23 +385,71 @@ function Graph() {
       </ReactFlow>
 
       {paletteOpen ? (
-        <Palette onPick={addNode} onClose={() => setPaletteOpen(false)} />
+        <Palette
+          onPick={addNode}
+          onClose={() => {
+            setPaletteOpen(false)
+            setDropAt(null)
+          }}
+        />
       ) : (
-        <div className={s.hint}>
-          <Label>{t('nodes.paletteHint')}</Label>
-        </div>
-      )}
-
-      {paletteOpen ? null : (
         <button
           type="button"
-          className={s.floatBtn}
-          onClick={() => fitView({ padding: 0.18, duration: 200 })}
+          className={s.addBtn}
+          title={`${t('nodes.palette')} · Tab`}
+          onClick={() => {
+            setDropAt(null)
+            setPaletteOpen(true)
+          }}
         >
-          <Maximize2 size={12} strokeWidth={1} />
-          {t('nodes.fit')}
+          <Plus size={15} strokeWidth={1.5} />
         </button>
       )}
+
+      {menu ? (
+        <div className={s.menu} style={{ left: menu.x, top: menu.y }}>
+          {menu.target.kind === 'node' ? (
+            <>
+              <button
+                type="button"
+                className={s.menuItem}
+                onClick={() => duplicateNode((menu.target as { id: string }).id)}
+              >
+                <Copy size={12} strokeWidth={1} />
+                {t('nodes.duplicate')}
+              </button>
+              <button
+                type="button"
+                className={s.menuItem}
+                onClick={() => removeNode((menu.target as { id: string }).id)}
+              >
+                <Trash2 size={12} strokeWidth={1} />
+                {t('nodes.delete')}
+                <span className={s.menuKey}>Del</span>
+              </button>
+            </>
+          ) : null}
+
+          {menu.target.kind === 'edge' ? (
+            <button
+              type="button"
+              className={s.menuItem}
+              onClick={() => removeEdge((menu.target as { id: string }).id)}
+            >
+              <Unlink size={12} strokeWidth={1} />
+              {t('nodes.deleteEdge')}
+            </button>
+          ) : null}
+
+          {menu.target.kind === 'pane' ? (
+            <button type="button" className={s.menuItem} onClick={() => setPaletteOpen(true)}>
+              <Plus size={12} strokeWidth={1} />
+              {t('nodes.palette')}
+              <span className={s.menuKey}>Tab</span>
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
 }

@@ -43,7 +43,7 @@ export function NumField({
   }
 
   return (
-    <div className={s.root}>
+    <div className={s.root} data-disabled={disabled || undefined}>
       <div
         className={s.grip}
         onPointerDown={onPointerDown}

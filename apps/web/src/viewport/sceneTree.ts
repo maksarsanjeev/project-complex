@@ -1,6 +1,23 @@
 import type { SceneNodeKind } from '@complex/protocol'
-import type { PartId, TowerParams } from '../store/viewport'
+import type { PartFlags, PartId, TowerParams } from '../store/viewport'
 import { SLAB_THICKNESS } from './geometry'
+
+/**
+ * Какие части модели меняет каждый параметр. По этой таблице решается, что
+ * запрещено править: замок на части должен защищать её не только от выделения,
+ * но и от изменения геометрии.
+ */
+export const PARAM_PARTS: Record<keyof TowerParams, PartId[]> = {
+  floors: ['core', 'slabs', 'diagrid', 'glass'],
+  floorHeight: ['core', 'slabs', 'diagrid', 'glass'],
+  radius: ['core', 'slabs', 'diagrid', 'glass'],
+  sides: ['core', 'slabs', 'diagrid', 'glass'],
+  twistDeg: ['slabs', 'diagrid', 'glass'],
+  ribSize: ['diagrid'],
+}
+
+export const isParamLocked = (key: keyof TowerParams, locked: PartFlags): boolean =>
+  PARAM_PARTS[key].some((id) => locked[id])
 
 /**
  * Дерево сцены строится из ТОЙ ЖЕ модели, которую рисует вьюпорт, — поэтому

@@ -21,10 +21,16 @@ export function Outliner() {
   const select = useViewport((v) => v.select)
 
   const tree = useMemo(() => buildSceneTree(params), [params])
-  const total = useMemo(
-    () => flatParts(tree).reduce((sum, part) => sum + part.triangles, 0),
-    [tree],
-  )
+
+  // Считаем и видимое, и всё: иначе цифра в шапке расходится со счётчиком
+  // вьюпорта, и непонятно, какая из них правильная.
+  const { visible, total } = useMemo(() => {
+    const parts = flatParts(tree)
+    return {
+      total: parts.reduce((sum, p) => sum + p.triangles, 0),
+      visible: parts.reduce((sum, p) => sum + (hidden[p.id] ? 0 : p.triangles), 0),
+    }
+  }, [tree, hidden])
 
   /**
    * Слой переключается целиком: если видна хоть одна часть — гасим все,
@@ -44,7 +50,11 @@ export function Outliner() {
       <div className={s.search}>
         <Label tone="strong">{t('rail.outliner')}</Label>
         <span style={{ marginLeft: 'auto' }}>
-          <Label>{total.toLocaleString('ru-RU')} тр</Label>
+          <Label>
+            {visible === total
+              ? `${total.toLocaleString('ru-RU')} ${t('outliner.polygons')}`
+              : `${visible.toLocaleString('ru-RU')} ${t('outliner.hiddenOf')} ${total.toLocaleString('ru-RU')} ${t('outliner.polygons')}`}
+          </Label>
         </span>
       </div>
 
@@ -91,10 +101,12 @@ export function Outliner() {
                   data-selected={selected === part.id || undefined}
                 >
                   <span className={s.nodeIndent} style={{ width: 22 }} />
+                  {/* Заблокированную часть нельзя выделить и отсюда, а не только в сцене. */}
                   <button
                     type="button"
                     className={s.nodeName}
-                    title={part.name}
+                    title={locked[part.id] ? t('outliner.lockedHint') : part.name}
+                    disabled={locked[part.id]}
                     onClick={() => select(selected === part.id ? null : part.id)}
                   >
                     {part.name}

@@ -27,6 +27,15 @@
   background: var(--fill-2);
 }
 
+/* Заблокированное поле не должно выглядеть перетаскиваемым. */
+.root[data-disabled] {
+  opacity: 0.45;
+}
+
+.root[data-disabled] .grip {
+  cursor: not-allowed;
+}
+
 .field {
   display: flex;
   align-items: center;

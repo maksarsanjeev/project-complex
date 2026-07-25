@@ -129,8 +129,16 @@
   position: relative;
 }
 
+.renameRow {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px 8px;
+}
+
 .renameInput {
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   height: 20px;
   padding: 0 5px;
   border: var(--hair) solid var(--line-3);

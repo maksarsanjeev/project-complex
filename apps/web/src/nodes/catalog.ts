@@ -63,7 +63,7 @@ export const NODE_KINDS: Record<NodeKind, KindSpec> = {
         type: 'select',
         options: ['нормы', 'сборки', 'разборы', 'нормы + сборки', 'всё'],
       },
-      { key: 'topK', label: 'выдача', type: 'number', min: 1, max: 32 },
+      { key: 'topK', label: 'выдача', type: 'number', min: 1, max: 32, defaultValue: 6 },
     ],
   },
   'agent.llm': {
@@ -80,9 +80,9 @@ export const NODE_KINDS: Record<NodeKind, KindSpec> = {
       },
       { key: 'transport', label: 'подключение', type: 'select', options: ['api', 'cli'] },
       // Те самые тумблеры, которые агент спрашивает в начале задачи.
-      { key: 'selfReview', label: 'самопроверка', type: 'boolean' },
-      { key: 'autoGroup', label: 'группировать', type: 'boolean' },
-      { key: 'discipline', label: 'дисциплина', type: 'boolean' },
+      { key: 'selfReview', label: 'самопроверка', type: 'boolean', defaultValue: true },
+      { key: 'autoGroup', label: 'группировать', type: 'boolean', defaultValue: true },
+      { key: 'discipline', label: 'дисциплина', type: 'boolean', defaultValue: true },
     ],
   },
   'engine.sketchup': {
@@ -91,8 +91,8 @@ export const NODE_KINDS: Record<NodeKind, KindSpec> = {
     inputs: [par('plan', 'план')],
     outputs: [geo('geo', 'геометрия')],
     params: [
-      { key: 'port', label: 'порт', type: 'number', min: 1, max: 65535 },
-      { key: 'components', label: 'компоненты', type: 'boolean' },
+      { key: 'port', label: 'порт', type: 'number', min: 1, max: 65535, defaultValue: 8080 },
+      { key: 'components', label: 'компоненты', type: 'boolean', defaultValue: true },
     ],
   },
   'engine.blender': {
@@ -101,8 +101,16 @@ export const NODE_KINDS: Record<NodeKind, KindSpec> = {
     inputs: [par('plan', 'план')],
     outputs: [geo('geo', 'геометрия')],
     params: [
-      { key: 'port', label: 'порт', type: 'number', min: 1, max: 65535 },
-      { key: 'maxPolys', label: 'полигонов', type: 'number', min: 1000, max: 500000, step: 1000 },
+      { key: 'port', label: 'порт', type: 'number', min: 1, max: 65535, defaultValue: 9876 },
+      {
+        key: 'maxPolys',
+        label: 'полигонов',
+        type: 'number',
+        min: 1000,
+        max: 500000,
+        step: 1000,
+        defaultValue: 10000,
+      },
     ],
   },
   'engine.rhino': {
@@ -111,8 +119,8 @@ export const NODE_KINDS: Record<NodeKind, KindSpec> = {
     inputs: [par('plan', 'план')],
     outputs: [geo('geo', 'геометрия')],
     params: [
-      { key: 'port', label: 'порт', type: 'number', min: 1, max: 65535 },
-      { key: 'grasshopper', label: 'grasshopper', type: 'boolean' },
+      { key: 'port', label: 'порт', type: 'number', min: 1, max: 65535, defaultValue: 9890 },
+      { key: 'grasshopper', label: 'grasshopper', type: 'boolean', defaultValue: true },
     ],
   },
   'op.boolean': {
@@ -135,10 +143,10 @@ export const NODE_KINDS: Record<NodeKind, KindSpec> = {
     inputs: [geo('geo', 'геометрия')],
     outputs: [geo('geo', 'геометрия')],
     params: [
-      { key: 'count', label: 'копий', type: 'number', min: 1, max: 500 },
+      { key: 'count', label: 'копий', type: 'number', min: 1, max: 500, defaultValue: 4 },
       mm('stepX', 'шаг X', 50),
       mm('stepY', 'шаг Y', 50),
-      mm('stepZ', 'шаг Z', 50),
+      { ...mm('stepZ', 'шаг Z', 50), defaultValue: 3600 },
     ],
   },
   'op.fillet': {
@@ -146,7 +154,10 @@ export const NODE_KINDS: Record<NodeKind, KindSpec> = {
     group: 'операция',
     inputs: [geo('geo', 'геометрия')],
     outputs: [geo('geo', 'геометрия')],
-    params: [mm('radius', 'радиус', 1), { key: 'allEdges', label: 'все рёбра', type: 'boolean' }],
+    params: [
+      { ...mm('radius', 'радиус', 1), defaultValue: 10 },
+      { key: 'allEdges', label: 'все рёбра', type: 'boolean', defaultValue: true },
+    ],
   },
   'op.transform': {
     title: 'Трансформ',
@@ -166,9 +177,9 @@ export const NODE_KINDS: Record<NodeKind, KindSpec> = {
     inputs: [geo('geo', 'геометрия')],
     outputs: [geo('geo', 'геометрия')],
     params: [
-      { key: 'watertight', label: 'замкнутость', type: 'boolean' },
-      { key: 'collisions', label: 'коллизии', type: 'boolean' },
-      { key: 'norms', label: 'нормы', type: 'boolean' },
+      { key: 'watertight', label: 'замкнутость', type: 'boolean', defaultValue: true },
+      { key: 'collisions', label: 'коллизии', type: 'boolean', defaultValue: true },
+      { key: 'norms', label: 'нормы', type: 'boolean', defaultValue: true },
     ],
   },
   'output.export': {
@@ -201,7 +212,8 @@ export const PORT_SHAPE: Record<PortType, string> = {
 export function defaultParams(kind: NodeKind): Record<string, ParamValue> {
   const out: Record<string, ParamValue> = {}
   for (const spec of NODE_KINDS[kind].params) {
-    if (spec.type === 'boolean') out[spec.key] = false
+    if (spec.defaultValue !== undefined) out[spec.key] = spec.defaultValue
+    else if (spec.type === 'boolean') out[spec.key] = false
     else if (spec.type === 'select') out[spec.key] = spec.options?.[0] ?? ''
     else if (spec.type === 'number') out[spec.key] = spec.min ?? 0
     else out[spec.key] = ''

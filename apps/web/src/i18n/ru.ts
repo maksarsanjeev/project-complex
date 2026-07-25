@@ -32,6 +32,9 @@ export const ru = {
 
   'outliner.visibility': 'видимость',
   'outliner.lock': 'блокировка',
+  'outliner.polygons': 'полигонов',
+  'outliner.hiddenOf': 'из',
+  'outliner.lockedHint': 'часть заблокирована',
 
   /* ── статусы ────────────────────────────────────────────── */
   'status.idle': 'ожидание',
@@ -60,7 +63,7 @@ export const ru = {
   'hud.target': 'цель',
   'hud.units': 'единицы',
   'hud.snap': 'снап',
-  'hud.tris': 'треуг',
+  'hud.tris': 'полигоны',
   'hud.objects': 'объектов',
   'hud.selection': 'выделено',
 
@@ -68,6 +71,9 @@ export const ru = {
   'nodes.palette': 'добавить узел',
   'nodes.paletteHint': 'tab — палитра узлов',
   'nodes.fit': 'вписать граф',
+  'nodes.delete': 'удалить',
+  'nodes.duplicate': 'дублировать',
+  'nodes.deleteEdge': 'убрать связь',
   'nodes.clear': 'очистить',
   'nodes.saved': 'граф сохранён',
   'nodes.port.geometry': 'геометрия',
@@ -120,7 +126,8 @@ export const ru = {
   'inspect.emptyNode': 'узел не выбран',
   'inspect.node': 'узел',
   'inspect.part': 'часть модели',
-  'inspect.triangles': 'треугольников',
+  'inspect.triangles': 'полигонов',
+  'inspect.lockedParams': 'параметры заблокированы: снимите замок в аутлайнере',
   'inspect.name': 'имя',
   'inspect.kind': 'тип',
   'inspect.material': 'материал',
@@ -146,7 +153,7 @@ export const ru = {
   /* ── статусбар ──────────────────────────────────────────── */
   'statusbar.engine': 'движок',
   'statusbar.fps': 'fps',
-  'statusbar.tris': 'треуг',
+  'statusbar.tris': 'полигоны',
   'statusbar.units': 'ед',
   'statusbar.queue': 'очередь',
   'statusbar.agent': 'агент',
@@ -158,6 +165,8 @@ export const ru = {
   'common.expand': 'развернуть',
   'common.cancel': 'отмена',
   'common.ok': 'ок',
+  'common.apply': 'применить',
+  'common.clear': 'очистить',
   'common.mm': 'мм',
   'common.deg': '°',
 } as const

@@ -22,7 +22,7 @@ import { useLayout } from '../store/layout'
 import { useSession } from '../store/session'
 import { useViewport } from '../store/viewport'
 import { IdChip, Label, NumField, Section, StatusMark, type MarkState } from '../ui'
-import { buildSceneTree, findPart } from '../viewport/sceneTree'
+import { buildSceneTree, findPart, isParamLocked } from '../viewport/sceneTree'
 import { ParamField } from './ParamField'
 import s from './panels.module.css'
 
@@ -149,20 +149,33 @@ function PartInspector() {
   )
 }
 
-/** Параметры демо-модели: правятся здесь, геометрия пересобирается сразу. */
+/**
+ * Параметры демо-модели: правятся здесь, геометрия пересобирается сразу.
+ * Поле блокируется, если заблокирована хотя бы одна часть, которую оно меняет.
+ */
 function ModelParams() {
   const params = useViewport((v) => v.params)
   const setParam = useViewport((v) => v.setParam)
+  const locked = useViewport((v) => v.locked)
+
+  const off = (key: keyof typeof params) => isParamLocked(key, locked)
+  const anyLocked = (Object.keys(params) as Array<keyof typeof params>).some(off)
 
   return (
     <>
       <div className={s.fields}>
-        <NumField label="этажей" value={params.floors} onChange={(v) => setParam('floors', v)} />
+        <NumField
+          label="этажей"
+          value={params.floors}
+          disabled={off('floors')}
+          onChange={(v) => setParam('floors', v)}
+        />
         <NumField
           label="шаг"
           value={params.floorHeight}
           unit={t('common.mm')}
           step={25}
+          disabled={off('floorHeight')}
           onChange={(v) => setParam('floorHeight', v)}
         />
         <NumField
@@ -170,23 +183,32 @@ function ModelParams() {
           value={params.radius}
           unit={t('common.mm')}
           step={100}
+          disabled={off('radius')}
           onChange={(v) => setParam('radius', v)}
         />
         <NumField
           label="кручение"
           value={params.twistDeg}
           unit={t('common.deg')}
+          disabled={off('twistDeg')}
           onChange={(v) => setParam('twistDeg', v)}
         />
-        <NumField label="сторон" value={params.sides} onChange={(v) => setParam('sides', v)} />
+        <NumField
+          label="сторон"
+          value={params.sides}
+          disabled={off('sides')}
+          onChange={(v) => setParam('sides', v)}
+        />
         <NumField
           label="ребро"
           value={params.ribSize}
           unit={t('common.mm')}
           step={10}
+          disabled={off('ribSize')}
           onChange={(v) => setParam('ribSize', v)}
         />
       </div>
+      {anyLocked ? <Label>{t('inspect.lockedParams')}</Label> : null}
     </>
   )
 }

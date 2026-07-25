@@ -222,6 +222,8 @@ export interface ParamSpec {
   step?: number
   /** Варианты для типа select. */
   options?: string[]
+  /** Значение нового узла. Без него порт движка создавался бы равным минимуму. */
+  defaultValue?: ParamValue
 }
 
 export type ParamValue = string | number | boolean

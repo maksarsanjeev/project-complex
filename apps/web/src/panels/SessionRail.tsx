@@ -1,5 +1,5 @@
 import type { Session, SessionStatus } from '@complex/protocol'
-import { Pencil, Plus, RotateCcw, Search, Trash2, X } from 'lucide-react'
+import { Check, Pencil, Plus, RotateCcw, Search, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { t } from '../i18n'
 import { useSession } from '../store/session'
@@ -49,6 +49,11 @@ function SessionCard({
     else setDraft(session.title)
   }
 
+  const cancel = () => {
+    setDraft(session.title)
+    setEditing(false)
+  }
+
   return (
     <div className={s.sessionRow}>
       <button type="button" className={s.session} data-active={active || undefined} onClick={onSelect}>
@@ -67,22 +72,29 @@ function SessionCard({
         </div>
       </button>
 
+      {/*
+        Правка подтверждается явно галочкой или крестиком. Раньше имя
+        сохранялось по потере фокуса — то есть кликом мимо, и отменить
+        случайную правку было нечем.
+      */}
       {editing ? (
-        <div style={{ padding: '0 9px 8px' }}>
+        <div className={s.renameRow}>
           <input
             className={s.renameInput}
             value={draft}
             autoFocus
             onChange={(e) => setDraft(e.target.value)}
-            onBlur={commit}
             onKeyDown={(e) => {
               if (e.key === 'Enter') commit()
-              if (e.key === 'Escape') {
-                setDraft(session.title)
-                setEditing(false)
-              }
+              if (e.key === 'Escape') cancel()
             }}
           />
+          <IconButton onClick={commit} title={t('common.apply')}>
+            <Check size={12} strokeWidth={1.5} />
+          </IconButton>
+          <IconButton onClick={cancel} title={t('common.cancel')}>
+            <X size={12} strokeWidth={1.5} />
+          </IconButton>
         </div>
       ) : null}
 
@@ -192,6 +204,11 @@ export function SessionRail() {
             title={t('rail.searchHint')}
             onChange={(e) => setQuery(e.target.value)}
           />
+          {query ? (
+            <IconButton onClick={() => setQuery('')} title={t('common.clear')}>
+              <X size={12} strokeWidth={1} />
+            </IconButton>
+          ) : null}
           <IconButton onClick={() => void createSession()} title={t('rail.newSession')}>
             <Plus size={13} strokeWidth={1} />
           </IconButton>
