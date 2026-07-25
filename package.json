@@ -1,0 +1,21 @@
+{
+  "name": "project-complex",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Комплексный сервис для vibemodelling: промпты и картинки на входе, качественная геометрия из SketchUp/Blender/Rhino на выходе",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @complex/web",
+    "build": "npm run build -w @complex/web",
+    "preview": "npm run preview -w @complex/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20.19"
+  }
+}

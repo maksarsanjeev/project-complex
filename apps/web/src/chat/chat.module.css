@@ -1,0 +1,279 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg);
+}
+
+/* ── шапка ────────────────────────────────────────────────────── */
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--row);
+  padding: 0 8px;
+  flex: none;
+  border-bottom: var(--hair) solid var(--line);
+}
+
+.select {
+  height: 20px;
+  padding: 0 4px;
+  border: var(--hair) solid var(--line-2);
+  background: var(--bg);
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-tight);
+  color: var(--ink);
+  max-width: 190px;
+}
+
+.select:disabled {
+  color: var(--ink-3);
+}
+
+/* ── лента ────────────────────────────────────────────────────── */
+
+.list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.empty {
+  margin: auto;
+  text-align: center;
+}
+
+.msg {
+  display: grid;
+  grid-template-columns: 116px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.gutter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  padding-top: 1px;
+}
+
+.roleChip {
+  display: inline-flex;
+  align-items: center;
+  height: 15px;
+  padding: 0 5px;
+  border: var(--hair) solid var(--line-2);
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.roleChip--user {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.time {
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.body {
+  min-width: 0;
+  border-left: var(--hair) solid var(--line);
+  padding-left: 12px;
+}
+
+.text {
+  font-family: var(--font-sans);
+  font-size: var(--fs-md);
+  line-height: 1.55;
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.text--system {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+}
+
+/* каретка стриминга */
+.caret {
+  display: inline-block;
+  width: 6px;
+  height: 13px;
+  margin-left: 2px;
+  background: var(--ink);
+  vertical-align: -2px;
+  animation: blink 900ms steps(2, end) infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* ── блок инструмента ─────────────────────────────────────────── */
+
+.tools {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.tool {
+  border: var(--hair) solid var(--line);
+}
+
+.toolHead {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  height: 21px;
+  padding: 0 7px;
+  text-align: left;
+  background: var(--bg-sunken);
+}
+
+.toolHead:hover {
+  background: var(--fill);
+}
+
+.toolName {
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  color: var(--ink);
+}
+
+.toolMeta {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.toolBody {
+  border-top: var(--hair) solid var(--line);
+  padding: 6px 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.code {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+
+/* ── вложения ─────────────────────────────────────────────────── */
+
+.attachments {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.attachment {
+  position: relative;
+  width: 76px;
+  height: 56px;
+  border: var(--hair) solid var(--line-2);
+  display: flex;
+  align-items: flex-end;
+  padding: 3px;
+  font-size: 9px;
+  color: var(--ink-3);
+  overflow: hidden;
+}
+
+/* ── композер ─────────────────────────────────────────────────── */
+
+.composer {
+  flex: none;
+  border-top: var(--hair) solid var(--line);
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  background: var(--bg);
+}
+
+.input {
+  flex: 1 1 auto;
+  min-width: 0;
+  resize: none;
+  padding: 9px 12px;
+  font-family: var(--font-sans);
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  color: var(--ink);
+  background: transparent;
+  max-height: 140px;
+}
+
+.input::placeholder {
+  color: var(--ink-3);
+}
+
+.composerSide {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 6px 8px;
+  border-left: var(--hair) solid var(--line);
+  min-width: 118px;
+}
+
+.sendBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border: var(--hair) solid var(--ink);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+}
+
+.sendBtn:disabled {
+  background: transparent;
+  color: var(--ink-3);
+  border-color: var(--line);
+}
+
+.sendBtn--stop {
+  background: transparent;
+  color: var(--ink);
+}

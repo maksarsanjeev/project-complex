@@ -1,0 +1,169 @@
+/* Мелкие кирпичи дизайн-языка: лейблы, чипы, засечки, кнопки-иконки. */
+
+.label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  color: var(--ink-3);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.label--strong {
+  color: var(--ink);
+}
+
+.label--ink2 {
+  color: var(--ink-2);
+}
+
+/* ── ID-чип: SES-014 / ND-07 / JOB-0231 ───────────────────────── */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  height: 15px;
+  padding: 0 4px;
+  border: var(--hair) solid var(--line-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: var(--ink-2);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.chip--invert {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* ── метка состояния: штриховкой, не цветом ───────────────────── */
+
+.mark {
+  position: relative;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border: var(--hair) solid var(--line-3);
+}
+
+.mark--idle {
+  border-style: dotted;
+}
+
+.mark--ok {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.mark--running {
+  background-image: repeating-linear-gradient(45deg, var(--ink) 0 1px, transparent 1px 3px);
+  animation: markRun 700ms linear infinite;
+}
+
+.mark--error {
+  background: var(--ink);
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 2px var(--bg);
+}
+
+@keyframes markRun {
+  to {
+    background-position: 4.24px 0;
+  }
+}
+
+/* ── угловые засечки активного блока ──────────────────────────── */
+
+.corners {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.corners span {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border: 0 solid var(--ink);
+}
+
+.corners span:nth-child(1) {
+  top: 0;
+  left: 0;
+  border-top-width: var(--hair);
+  border-left-width: var(--hair);
+}
+
+.corners span:nth-child(2) {
+  top: 0;
+  right: 0;
+  border-top-width: var(--hair);
+  border-right-width: var(--hair);
+}
+
+.corners span:nth-child(3) {
+  bottom: 0;
+  left: 0;
+  border-bottom-width: var(--hair);
+  border-left-width: var(--hair);
+}
+
+.corners span:nth-child(4) {
+  bottom: 0;
+  right: 0;
+  border-bottom-width: var(--hair);
+  border-right-width: var(--hair);
+}
+
+/* ── кнопка-иконка ────────────────────────────────────────────── */
+
+.iconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 22px;
+  min-width: 22px;
+  padding: 0 5px;
+  border: var(--hair) solid transparent;
+  color: var(--ink-2);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+
+.iconBtn:hover:not(:disabled) {
+  background: var(--fill);
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.iconBtn[data-active='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.iconBtnText {
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+}
+
+/* ── прочее ───────────────────────────────────────────────────── */
+
+.rule {
+  height: var(--hair);
+  background: var(--line);
+  flex: none;
+}
+
+.spacer {
+  flex: 1 1 auto;
+}

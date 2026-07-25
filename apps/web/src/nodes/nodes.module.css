@@ -1,0 +1,200 @@
+/* Узел графа: квадратный, шапка инвертирована, порты — глифами по форме. */
+
+.node {
+  position: relative;
+  min-width: 168px;
+  background: var(--bg);
+  border: var(--hair) solid var(--line-2);
+  font-family: var(--font-mono);
+}
+
+.node[data-selected='true'] {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 1px var(--ink);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 6px;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.headTitle {
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.headCode {
+  margin-left: auto;
+  font-size: var(--fs-micro);
+  opacity: 0.7;
+}
+
+.ports {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0;
+}
+
+.portRow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 17px;
+  padding: 0 8px;
+  font-size: var(--fs-micro);
+  color: var(--ink-2);
+  letter-spacing: 0.02em;
+}
+
+.portRow--out {
+  justify-content: flex-end;
+}
+
+.params {
+  border-top: var(--hair) dashed var(--line);
+  padding: 4px 8px 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.paramRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: var(--fs-micro);
+}
+
+.paramKey {
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+}
+
+.paramVal {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 108px;
+}
+
+.foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 16px;
+  padding: 0 6px;
+  border-top: var(--hair) solid var(--line);
+  background: var(--fill);
+}
+
+.footLabel {
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  color: var(--ink-3);
+}
+
+/* ── порты: форма кодирует тип ────────────────────────────────── */
+
+.port:global(.react-flow__handle) {
+  width: 9px;
+  height: 9px;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg);
+  border: var(--hair) solid var(--ink);
+  border-radius: 0;
+}
+
+/* ● геометрия */
+.port--geo:global(.react-flow__handle) {
+  border-radius: 50%;
+}
+
+/* ▲ параметры */
+.port--par:global(.react-flow__handle) {
+  clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+/* ■ данные — базовая форма, оставляем квадрат */
+.port--dat:global(.react-flow__handle) {
+  background: var(--bg);
+}
+
+/* ── палитра узлов ────────────────────────────────────────────── */
+
+.palette {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 6;
+  width: 220px;
+  max-height: calc(100% - 24px);
+  overflow: auto;
+  background: var(--bg);
+  border: var(--hair) solid var(--ink);
+}
+
+.paletteHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--row);
+  padding: 0 8px;
+  border-bottom: var(--hair) solid var(--line);
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+}
+
+.paletteGroup {
+  padding: 5px 8px 2px;
+  border-top: var(--hair) solid var(--line);
+}
+
+.paletteItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 21px;
+  padding: 0 8px;
+  text-align: left;
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+}
+
+.paletteItem:hover {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.hint {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+}

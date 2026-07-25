@@ -1,0 +1,149 @@
+/** Русский словарь — основной. Ключи здесь задают тип для остальных языков. */
+export const ru = {
+  'app.name': 'PROJECT COMPLEX',
+  'app.tagline': 'vibemodelling',
+
+  /* ── топбар ─────────────────────────────────────────────── */
+  'topbar.project': 'проект',
+  'topbar.engine': 'движок',
+  'topbar.model': 'модель',
+  'topbar.theme': 'тема',
+  'topbar.settings': 'настройки',
+
+  /* ── вкладки центра ─────────────────────────────────────── */
+  'tabs.viewport': 'вьюпорт',
+  'tabs.nodes': 'ноды',
+
+  /* ── левый рельс ────────────────────────────────────────── */
+  'rail.sessions': 'сессии',
+  'rail.outliner': 'сцена',
+  'rail.search': 'поиск',
+  'rail.newSession': 'новая сессия',
+  'rail.empty': 'ничего не найдено',
+  'rail.layers': 'слои по материалу',
+
+  /* ── статусы ────────────────────────────────────────────── */
+  'status.idle': 'ожидание',
+  'status.running': 'работа',
+  'status.error': 'ошибка',
+  'status.done': 'готово',
+  'status.online': 'на связи',
+  'status.offline': 'нет связи',
+  'status.busy': 'занят',
+
+  /* ── вьюпорт ────────────────────────────────────────────── */
+  'viewport.mode.shaded': 'shaded',
+  'viewport.mode.wire': 'wire',
+  'viewport.mode.clay': 'clay',
+  'viewport.mode.xray': 'x-ray',
+  'viewport.projection.persp': 'персп',
+  'viewport.projection.ortho': 'орто',
+  'viewport.fit': 'вписать',
+  'viewport.grid': 'сетка',
+  'viewport.gizmo': 'гизмо',
+  'viewport.drop': 'бросьте glb · gltf · obj · stl сюда',
+  'viewport.loading': 'загрузка геометрии',
+  'viewport.loadError': 'не удалось прочитать файл',
+
+  'hud.camera': 'камера',
+  'hud.target': 'цель',
+  'hud.units': 'единицы',
+  'hud.snap': 'снап',
+  'hud.tris': 'треуг',
+  'hud.objects': 'объектов',
+  'hud.selection': 'выделено',
+
+  /* ── ноды ───────────────────────────────────────────────── */
+  'nodes.palette': 'добавить узел',
+  'nodes.paletteHint': 'tab — палитра узлов',
+  'nodes.fit': 'вписать граф',
+  'nodes.clear': 'очистить',
+  'nodes.saved': 'граф сохранён',
+  'nodes.port.geometry': 'геометрия',
+  'nodes.port.params': 'параметры',
+  'nodes.port.data': 'данные',
+
+  /* ── чат ────────────────────────────────────────────────── */
+  'chat.title': 'диалог',
+  'chat.placeholder': 'опишите, что моделим. / — команды',
+  'chat.send': 'отправить',
+  'chat.stop': 'стоп',
+  'chat.attach': 'вложение',
+  'chat.mode.api': 'api',
+  'chat.mode.cli': 'cli',
+  'chat.modeHint.api': 'прямой вызов по ключу',
+  'chat.modeHint.cli': 'локальный агент подключается сам',
+  'chat.role.user': 'пользователь',
+  'chat.role.assistant': 'ассистент',
+  'chat.role.tool': 'инструмент',
+  'chat.role.system': 'система',
+  'chat.toolCode': 'код',
+  'chat.toolResult': 'результат',
+  'chat.empty': 'сессия пуста — начните с описания объекта',
+  'chat.hint': 'ctrl+enter — отправить',
+
+  /* ── правая панель ──────────────────────────────────────── */
+  'tools.title': 'инструменты',
+  'tools.section.create': 'построение',
+  'tools.section.modify': 'изменение',
+  'tools.section.inspect': 'инспектор',
+  'tools.section.engine': 'движок',
+  'tools.section.export': 'экспорт',
+  'tools.section.kb': 'база знаний',
+
+  'tools.box': 'параллелепипед',
+  'tools.cylinder': 'цилиндр',
+  'tools.sphere': 'сфера',
+  'tools.plane': 'плоскость',
+  'tools.extrude': 'выдавить',
+  'tools.revolve': 'вращение',
+  'tools.boolean': 'булеан',
+  'tools.array': 'массив',
+  'tools.fillet': 'скругление',
+  'tools.chamfer': 'фаска',
+  'tools.mirror': 'зеркало',
+  'tools.transform': 'трансформ',
+
+  'inspect.empty': 'ничего не выделено',
+  'inspect.name': 'имя',
+  'inspect.kind': 'тип',
+  'inspect.material': 'материал',
+  'inspect.position': 'позиция',
+  'inspect.rotation': 'поворот',
+  'inspect.scale': 'масштаб',
+  'inspect.size': 'габарит',
+
+  'engine.port': 'порт',
+  'engine.version': 'версия',
+  'engine.lastSeen': 'связь',
+  'engine.bind': 'привязать',
+  'engine.bound': 'привязан',
+
+  'export.format': 'формат',
+  'export.run': 'выгрузить',
+  'export.hint': 'формат определяет движок-исполнитель',
+
+  'kb.placeholder': 'запрос к базе знаний',
+  'kb.empty': 'введите запрос — нормы, сборки, разборы референсов',
+  'kb.source': 'источник',
+
+  /* ── статусбар ──────────────────────────────────────────── */
+  'statusbar.engine': 'движок',
+  'statusbar.fps': 'fps',
+  'statusbar.tris': 'треуг',
+  'statusbar.units': 'ед',
+  'statusbar.queue': 'очередь',
+  'statusbar.agent': 'агент',
+  'statusbar.mock': 'мок-транспорт',
+
+  /* ── общее ──────────────────────────────────────────────── */
+  'common.close': 'закрыть',
+  'common.collapse': 'свернуть',
+  'common.expand': 'развернуть',
+  'common.cancel': 'отмена',
+  'common.ok': 'ок',
+  'common.mm': 'мм',
+  'common.deg': '°',
+} as const
+
+export type I18nKey = keyof typeof ru

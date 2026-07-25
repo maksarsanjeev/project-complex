@@ -1,0 +1,163 @@
+/* Сброс + базовая типографика + общие FUI-паттерны. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  background: none;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+button {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+p {
+  margin: 0;
+}
+
+hr {
+  border: 0;
+  border-top: var(--hair) solid var(--line);
+  margin: 0;
+}
+
+::selection {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: var(--hair) solid var(--line-3);
+  outline-offset: 1px;
+}
+
+/* ── полосы прокрутки: тонкие, монохромные ─────────────────────── */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink-4) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--ink-4);
+  border: 3px solid var(--bg);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-3);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ── общие паттерны ────────────────────────────────────────────── */
+
+/* Миллиметровка: точечная сетка фона. */
+.paper {
+  background-image: radial-gradient(var(--paper-dot) 0.5px, transparent 0.5px);
+  background-size: var(--paper-step) var(--paper-step);
+  background-position: -1px -1px;
+}
+
+/* Диагональная штриховка — состояние `running`. */
+.hatch {
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--ink-4) 0 1px,
+    transparent 1px 5px
+  );
+}
+
+.hatch--run {
+  animation: hatch-run 900ms linear infinite;
+}
+
+@keyframes hatch-run {
+  to {
+    background-position: 7.07px 0;
+  }
+}
+
+/* Мерные риски вдоль верхней кромки крупных панелей. */
+.ticks {
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--line-2) 0 1px,
+    transparent 1px 8px
+  );
+  background-repeat: no-repeat;
+  background-size: 100% 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

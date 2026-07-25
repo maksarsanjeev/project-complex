@@ -1,0 +1,323 @@
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg);
+}
+
+.main {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* ── топбар ───────────────────────────────────────────────────── */
+
+.top {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--topbar-h);
+  padding: 0 10px;
+  flex: none;
+  border-bottom: var(--hair) solid var(--line);
+  background: var(--bg);
+}
+
+/* мерные риски по нижней кромке топбара */
+.top::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background-image: repeating-linear-gradient(to right, var(--line) 0 1px, transparent 1px 9px);
+  pointer-events: none;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.brandMark {
+  width: 11px;
+  height: 11px;
+  background: var(--accent);
+}
+
+.brandName {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.topDivider {
+  width: var(--hair);
+  height: 16px;
+  background: var(--line);
+  flex: none;
+}
+
+.topField {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.topValue {
+  font-size: var(--fs-xs);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 340px;
+}
+
+.topRight {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── центральная область ──────────────────────────────────────── */
+
+.center {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg);
+}
+
+.centerHead {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--row);
+  padding: 0 8px;
+  flex: none;
+  border-bottom: var(--hair) solid var(--line);
+}
+
+.tabs {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  color: var(--ink-3);
+  border-right: var(--hair) solid var(--line);
+  transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+
+.tab:first-child {
+  border-left: var(--hair) solid var(--line);
+}
+
+.tab:hover {
+  color: var(--ink);
+  background: var(--fill);
+}
+
+.tab[data-active='true'] {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.centerBody {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.stage {
+  position: absolute;
+  inset: 0;
+}
+
+.stage[data-hidden='true'] {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* ── свёрнутые полосы ─────────────────────────────────────────── */
+
+.collapsedV {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 26px;
+  height: 100%;
+  padding: 6px 0;
+  flex: none;
+  border-right: var(--hair) solid var(--line);
+  background: var(--bg-sunken);
+}
+
+.collapsedVRight {
+  border-right: 0;
+  border-left: var(--hair) solid var(--line);
+}
+
+.vertical {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  color: var(--ink-3);
+}
+
+.collapsedH {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--row);
+  padding: 0 8px;
+  flex: none;
+  border-top: var(--hair) solid var(--line);
+  background: var(--bg-sunken);
+}
+
+/* Класс панели вешается на вложенный div — тянем его на всю высоту. */
+.pane {
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.group {
+  height: 100%;
+  min-height: 0;
+}
+
+.centerWrap {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+}
+
+.centerColumn {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.centerFill {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* ── ручки сплиттеров ─────────────────────────────────────────── */
+
+.handleV {
+  width: 5px;
+  background: var(--bg);
+  border-left: var(--hair) solid var(--line);
+  border-right: var(--hair) solid var(--line);
+  position: relative;
+  transition: background var(--dur) var(--ease);
+}
+
+.handleH {
+  height: 5px;
+  background: var(--bg);
+  border-top: var(--hair) solid var(--line);
+  border-bottom: var(--hair) solid var(--line);
+  position: relative;
+  transition: background var(--dur) var(--ease);
+}
+
+.handleV:hover,
+.handleH:hover,
+.handleV[data-resize-handle-active],
+.handleH[data-resize-handle-active] {
+  background: var(--fill-2);
+}
+
+/* точки-грип по центру ручки */
+.handleV::after,
+.handleH::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background-image: radial-gradient(var(--ink-4) 0.5px, transparent 0.5px);
+}
+
+.handleV::after {
+  width: 1px;
+  height: 26px;
+  background-size: 2px 4px;
+}
+
+.handleH::after {
+  width: 26px;
+  height: 1px;
+  background-size: 4px 2px;
+}
+
+/* ── статусбар ────────────────────────────────────────────────── */
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  height: var(--statusbar-h);
+  flex: none;
+  padding: 0 10px;
+  border-top: var(--hair) solid var(--line);
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.statusItem {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 0 10px;
+  border-right: var(--hair) solid var(--line);
+  height: 12px;
+}
+
+.statusItem:first-child {
+  padding-left: 0;
+}
+
+.statusItem:last-child {
+  border-right: 0;
+}
+
+.statusValue {
+  font-size: var(--fs-micro);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.statusRight {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0;
+}

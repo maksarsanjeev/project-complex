@@ -1,0 +1,80 @@
+/* Перекраска React Flow под монохромный FUI. Только токены, без hex. */
+
+.react-flow {
+  background: transparent;
+}
+
+.react-flow__edge-path,
+.react-flow__connection-path {
+  stroke: var(--ink);
+  stroke-width: 1;
+}
+
+.react-flow__connection-path {
+  stroke-dasharray: 3 3;
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke-width: 2;
+}
+
+.react-flow__handle-connecting {
+  background: var(--ink) !important;
+}
+
+.react-flow__node {
+  font-family: var(--font-mono);
+}
+
+.react-flow__controls {
+  box-shadow: none;
+  border: 1px solid var(--line-2);
+}
+
+.react-flow__controls-button {
+  width: 22px;
+  height: 22px;
+  background: var(--bg);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.react-flow__controls-button:last-child {
+  border-bottom: 0;
+}
+
+.react-flow__controls-button:hover {
+  background: var(--fill);
+}
+
+.react-flow__controls-button svg {
+  fill: var(--ink);
+  max-width: 10px;
+  max-height: 10px;
+}
+
+.react-flow__minimap {
+  background: var(--bg);
+  border: 1px solid var(--line-2);
+}
+
+.react-flow__minimap-mask {
+  fill: var(--fill-2);
+}
+
+.react-flow__attribution {
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.react-flow__attribution a {
+  color: var(--ink-3);
+  text-decoration: none;
+}
+
+.react-flow__selection {
+  background: var(--fill-2);
+  border: 1px dashed var(--line-3);
+}

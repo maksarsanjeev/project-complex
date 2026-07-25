@@ -1,0 +1,166 @@
+.root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.canvas canvas {
+  outline: none;
+  display: block;
+}
+
+/* ── HUD ──────────────────────────────────────────────────────── */
+
+.hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  padding: 10px 12px;
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-rows: auto 1fr auto;
+  align-content: space-between;
+  gap: 6px;
+}
+
+.hudTL {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.hudTR {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+}
+
+.hudBL {
+  grid-column: 1;
+  grid-row: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.hudRow {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.hudValue {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+/* угловые засечки кадра */
+.frame {
+  position: absolute;
+  inset: 6px;
+  pointer-events: none;
+}
+
+.frame span {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 0 solid var(--line-2);
+}
+
+.frame span:nth-child(1) {
+  top: 0;
+  left: 0;
+  border-top-width: var(--hair);
+  border-left-width: var(--hair);
+}
+.frame span:nth-child(2) {
+  top: 0;
+  right: 0;
+  border-top-width: var(--hair);
+  border-right-width: var(--hair);
+}
+.frame span:nth-child(3) {
+  bottom: 0;
+  left: 0;
+  border-bottom-width: var(--hair);
+  border-left-width: var(--hair);
+}
+.frame span:nth-child(4) {
+  bottom: 0;
+  right: 0;
+  border-bottom-width: var(--hair);
+  border-right-width: var(--hair);
+}
+
+/* ── зона броска файла ────────────────────────────────────────── */
+
+.drop {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  border: var(--hair) dashed var(--line-3);
+  z-index: 3;
+}
+
+.dropInner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── тулбар вьюпорта ──────────────────────────────────────────── */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.filechip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 6px;
+  border: var(--hair) solid var(--line-2);
+  font-size: var(--fs-micro);
+  color: var(--ink-2);
+  max-width: 220px;
+}
+
+.filename {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.error {
+  color: var(--ink);
+  background: var(--fill-2);
+  padding: 0 6px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--fs-micro);
+}

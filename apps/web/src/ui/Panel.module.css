@@ -1,0 +1,55 @@
+.panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  background: var(--bg);
+}
+
+.head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--row);
+  padding: 0 8px;
+  flex: none;
+  border-bottom: var(--hair) solid var(--line);
+  background: var(--bg);
+}
+
+/* мерные риски по верхней кромке шапки */
+.head::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--line) 0 1px,
+    transparent 1px 7px
+  );
+  pointer-events: none;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.body--flush {
+  overflow: hidden;
+}

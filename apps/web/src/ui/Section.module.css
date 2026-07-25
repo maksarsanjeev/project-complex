@@ -1,0 +1,48 @@
+.root {
+  border-bottom: var(--hair) solid var(--line);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  height: var(--row);
+  padding: 0 8px;
+  text-align: left;
+  background: var(--bg);
+  transition: background var(--dur) var(--ease);
+}
+
+.head:hover {
+  background: var(--fill);
+}
+
+/* индикатор раскрытия: ▸ / ▾ рисуем сами треугольником */
+.caret {
+  width: 0;
+  height: 0;
+  flex: none;
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
+  border-left: 5px solid var(--ink-3);
+  transition: transform var(--dur) var(--ease);
+}
+
+.caret[data-open='true'] {
+  transform: rotate(90deg) translateX(1px);
+  border-left-color: var(--ink);
+}
+
+.count {
+  margin-left: auto;
+}
+
+.body {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--bg-sunken);
+  border-top: var(--hair) solid var(--line);
+}
