@@ -1,5 +1,5 @@
 # sketchup_mcp_server.rb
-# SketchUp MCP Bridge Plugin - v2.1
+# SketchUp MCP Bridge Plugin - v2.2
 #
 # Embeds a lightweight TCP/HTTP server inside SketchUp so that
 # an external MCP server (Python) can drive SketchUp programmatically.
@@ -24,6 +24,13 @@
 #   * при старте визитки мёртвых процессов подчищаются;
 #   * никаких модальных окон при запуске: диалог останавливает главный поток
 #     SketchUp, а на нём же работает обработчик очереди — мост немел целиком.
+#
+# --- v2.2 -------------------------------------------------------------------
+#   * булевы операции, фаски и скругления рёбер — алгоритмы перенесены из
+#     zinin/sketchup-mcp2 (MIT) вместе с описанием обойдённых ловушек;
+#   * живость экземпляра определяется по возрасту визитки, а не по PID:
+#     на Windows Process.kill(0, pid) рапортует «жив» для мёртвых процессов;
+#   * визитка убирается и при обычном закрытии SketchUp, а не только из меню.
 
 require 'socket'
 require 'json'
@@ -112,16 +119,51 @@ module SU_MCP
     model.active_entities
   end
 
+  # ---------------------------------------------------------------------------
+  # Единицы: НАРУЖУ всегда миллиметры
+  #
+  # Внутри SketchUp длины считаются в дюймах — это не настраивается. Поэтому
+  # переводим ровно на границе: всё, что пришло от клиента, сразу в дюймы,
+  # всё, что уходит клиенту, — обратно в миллиметры. Внутри обработчиков
+  # дюймы, снаружи миллиметры, смешения нет нигде.
+  #
+  # НЕ конвертируются: направления и нормали (единичные векторы), углы,
+  # коэффициенты масштабирования, количества — они безразмерны.
+  # ---------------------------------------------------------------------------
+
+  MM_PER_INCH = 25.4
+
+  # мм → внутренние дюймы
+  def self.mm(value)
+    value.to_f / MM_PER_INCH
+  end
+
+  # внутренние дюймы → мм
+  def self.to_mm(value)
+    (value.to_f * MM_PER_INCH).round(3)
+  end
+
+  # площадь: квадратные дюймы → квадратные миллиметры
+  def self.area_mm(value)
+    (value.to_f * MM_PER_INCH * MM_PER_INCH).round(2)
+  end
+
   def self.parse_point(arr)
-    Geom::Point3d.new(arr[0].to_f, arr[1].to_f, arr[2].to_f)
+    Geom::Point3d.new(mm(arr[0]), mm(arr[1]), mm(arr[2]))
   end
 
   def self.parse_points(arr)
     arr.map { |p| parse_point(p) }
   end
 
+  # Безразмерный вектор: направления и нормали отдаём как есть.
   def self.vec3(v)
     [v.x.to_f, v.y.to_f, v.z.to_f]
+  end
+
+  # Точка в пространстве: наружу уходит в миллиметрах.
+  def self.pt_mm(p)
+    [to_mm(p.x), to_mm(p.y), to_mm(p.z)]
   end
 
   def self.find_group(name)
@@ -188,7 +230,7 @@ module SU_MCP
       host:        '127.0.0.1',
       app:         'sketchup',
       app_version: (Sketchup.version.to_s rescue nil),
-      plugin:      '2.1'
+      plugin:      '2.2'
     }.merge(model_descriptor)
   end
 
@@ -210,28 +252,41 @@ module SU_MCP
     log "Card remove failed: #{e.message}"
   end
 
-  # Процесс мог упасть, не убрав за собой. Сигнал 0 ничего не посылает —
-  # это стандартная проверка «жив ли процесс».
-  def self.process_alive?(pid)
-    Process.kill(0, pid.to_i)
-    true
-  rescue Errno::ESRCH
-    false
-  rescue Errno::EPERM
-    true # существует, но чужой
+  # Живость определяем по возрасту визитки, а НЕ по PID.
+  #
+  # Замерено на Windows: Process.kill(0, pid) рапортует «жив» для давно умерших
+  # процессов, поэтому проверка по сигналу здесь бесполезна — мёртвые визитки
+  # копились бы вечно. Возраст же работает на любой платформе: живой экземпляр
+  # переписывает свою визитку каждые 2 секунды.
+  #
+  # Ложное срабатывание безвредно: если окно всего лишь подвисло на модальном
+  # диалоге, оно перепишет визитку на следующем тике и та появится снова.
+  CARD_STALE_AFTER = 30 # секунд
+
+  def self.card_stale?(path)
+    data = JSON.parse(File.read(path))
+    stamp = data['updated_at']
+    return true unless stamp
+    (Time.now.utc - parse_iso_utc(stamp)) > CARD_STALE_AFTER
   rescue StandardError
-    true # не смогли проверить — не трогаем
+    # Битую или нечитаемую визитку считаем мусором.
+    true
+  end
+
+  # Разбор метки вида 2026-07-26T02:41:05Z без подключения лишних библиотек.
+  def self.parse_iso_utc(text)
+    m = text.to_s.match(/\A(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z\z/)
+    raise ArgumentError, "bad timestamp: #{text}" unless m
+    Time.utc(m[1].to_i, m[2].to_i, m[3].to_i, m[4].to_i, m[5].to_i, m[6].to_i)
   end
 
   def self.sweep_stale_cards
     return unless File.directory?(INSTANCES_DIR)
     Dir.glob(File.join(INSTANCES_DIR, 'sketchup-*.json')).each do |path|
-      pid = File.basename(path)[/sketchup-(\d+)\.json/, 1]
-      next unless pid
-      next if pid.to_i == Process.pid
-      next if process_alive?(pid)
+      next if File.basename(path) == File.basename(card_path)
+      next unless card_stale?(path)
       File.delete(path) rescue nil
-      log "Swept stale card of pid #{pid}"
+      log "Swept stale card #{File.basename(path)}"
     end
   rescue StandardError => e
     log "Sweep failed: #{e.message}"
@@ -291,11 +346,11 @@ module SU_MCP
         base[:name]  = e.definition.name
         base[:layer] = e.layer.name
       when Sketchup::Face
-        base[:area]   = e.area.round(4)
+        base[:area]   = area_mm(e.area)
         base[:layer]  = e.layer.name
         base[:normal] = vec3(e.normal)
       when Sketchup::Edge
-        base[:length] = e.length.round(4)
+        base[:length] = to_mm(e.length)
         base[:layer]  = e.layer.name
       end
       base
@@ -323,7 +378,7 @@ module SU_MCP
     apply_layer(face, p['layer'])
     apply_material(face, p['material'])
     model.commit_operation
-    { id: face.entityID, type: 'Face', area: face.area.round(4), normal: vec3(face.normal) }
+    { id: face.entityID, type: 'Face', area: area_mm(face.area), normal: vec3(face.normal) }
   end
 
   def self.handle_create_edge(p)
@@ -333,7 +388,7 @@ module SU_MCP
     edge = entities.add_line(s, e)
     apply_layer(edge, p['layer'])
     model.commit_operation
-    { id: edge.entityID, type: 'Edge', length: edge.length.round(4) }
+    { id: edge.entityID, type: 'Edge', length: to_mm(edge.length) }
   end
 
   def self.handle_create_group(p)
@@ -346,9 +401,13 @@ module SU_MCP
   end
 
   def self.handle_create_box(p)
-    w = p['width'].to_f
-    d = p['depth'].to_f
-    h = p['height'].to_f
+    # Наружу габариты в миллиметрах, внутрь — в дюймах.
+    w_mm = p['width'].to_f
+    d_mm = p['depth'].to_f
+    h_mm = p['height'].to_f
+    w = mm(w_mm)
+    d = mm(d_mm)
+    h = mm(h_mm)
     o = p['origin'] ? parse_point(p['origin']) : ORIGIN
 
     model.start_operation('MCP: Box', true)
@@ -364,58 +423,60 @@ module SU_MCP
     face.pushpull(-h)  # pushpull into +Z
     apply_layer(grp, p['layer'])
     apply_material(face, p['material']) if p['material']
-    grp.name = p['name'] || "Box_#{w}x#{d}x#{h}"
+    grp.name = p['name'] || "Box_#{w_mm.round}x#{d_mm.round}x#{h_mm.round}"
     model.commit_operation
-    { id: grp.entityID, name: grp.name, width: w, depth: d, height: h }
+    { id: grp.entityID, name: grp.name, width: w_mm, depth: d_mm, height: h_mm, units: 'mm' }
   end
 
   def self.handle_create_circle(p)
     center   = p['center']   ? parse_point(p['center'])   : ORIGIN
     normal   = p['normal']   ? Geom::Vector3d.new(*p['normal'].map(&:to_f)) : Z_AXIS
-    radius   = p['radius'].to_f
-    segments = (p['segments'] || 24).to_i
-    raise "Radius must be positive" if radius <= 0
+    radius_mm = p['radius'].to_f
+    segments  = (p['segments'] || 24).to_i
+    raise "Radius must be positive" if radius_mm <= 0
     raise "Segments must be >= 3"   if segments < 3
 
     model.start_operation('MCP: Circle', true)
-    edges = entities.add_circle(center, normal, radius, segments)
+    edges = entities.add_circle(center, normal, mm(radius_mm), segments)
     if p['layer']
       edges.each { |e| apply_layer(e, p['layer']) }
     end
     model.commit_operation
-    { edge_count: edges.length, center: vec3(center), radius: radius, segments: segments }
+    { edge_count: edges.length, center: pt_mm(center), radius: radius_mm,
+      segments: segments, units: 'mm' }
   end
 
   def self.handle_create_arc(p)
     center     = p['center'] ? parse_point(p['center']) : ORIGIN
     xaxis      = p['xaxis']  ? Geom::Vector3d.new(*p['xaxis'].map(&:to_f))  : X_AXIS
     normal     = p['normal'] ? Geom::Vector3d.new(*p['normal'].map(&:to_f)) : Z_AXIS
-    radius     = p['radius'].to_f
+    radius_mm  = p['radius'].to_f
     start_a    = (p['start_angle'] || 0).to_f
     end_a      = (p['end_angle']   || 180).to_f
     segments   = (p['segments']    || 12).to_i
-    raise "Radius must be positive" if radius <= 0
+    raise "Radius must be positive" if radius_mm <= 0
 
     model.start_operation('MCP: Arc', true)
-    edges = entities.add_arc(center, xaxis, normal, radius, start_a.degrees, end_a.degrees, segments)
+    edges = entities.add_arc(center, xaxis, normal, mm(radius_mm),
+                             start_a.degrees, end_a.degrees, segments)
     if p['layer']
       edges.each { |e| apply_layer(e, p['layer']) }
     end
     model.commit_operation
-    { edge_count: edges.length, center: vec3(center), radius: radius }
+    { edge_count: edges.length, center: pt_mm(center), radius: radius_mm, units: 'mm' }
   end
 
   def self.handle_create_polygon(p)
     center    = p['center'] ? parse_point(p['center']) : ORIGIN
     normal    = p['normal'] ? Geom::Vector3d.new(*p['normal'].map(&:to_f)) : Z_AXIS
-    radius    = p['radius'].to_f
+    radius_mm = p['radius'].to_f
     num_sides = p['num_sides'].to_i
     inscribed = p['inscribed'].nil? ? true : p['inscribed']
-    raise "Radius must be positive"     if radius <= 0
+    raise "Radius must be positive"     if radius_mm <= 0
     raise "Need at least 3 sides"       if num_sides < 3
 
     model.start_operation('MCP: Polygon', true)
-    edges = entities.add_ngon(center, normal, radius, num_sides, inscribed)
+    edges = entities.add_ngon(center, normal, mm(radius_mm), num_sides, inscribed)
     # Also create the face
     pts = edges.map { |e| e.start.position }
     face = entities.add_face(pts) rescue nil
@@ -425,15 +486,16 @@ module SU_MCP
     {
       edge_count: edges.length,
       face_id:    face ? face.entityID : nil,
-      center:     vec3(center),
-      radius:     radius,
-      num_sides:  num_sides
+      center:     pt_mm(center),
+      radius:     radius_mm,
+      num_sides:  num_sides,
+      units:      'mm'
     }
   end
 
   def self.handle_push_pull(p)
-    eid  = p['entity_id']
-    dist = p['distance'].to_f
+    eid     = p['entity_id']
+    dist_mm = p['distance'].to_f
     raise "entity_id required" unless eid
 
     face = find_entity_by_id(eid)
@@ -441,9 +503,9 @@ module SU_MCP
     raise "Entity #{eid} is not a Face"    unless face.is_a?(Sketchup::Face)
 
     model.start_operation('MCP: PushPull', true)
-    face.pushpull(dist)
+    face.pushpull(mm(dist_mm))
     model.commit_operation
-    { status: 'ok', entity_id: eid, distance: dist }
+    { status: 'ok', entity_id: eid, distance: dist_mm, units: 'mm' }
   end
 
   def self.handle_follow_me(p)
@@ -481,11 +543,12 @@ module SU_MCP
     raise "Entity #{eid} not found"      unless entity
     raise "Entity cannot be transformed" unless entity.respond_to?(:transform!)
 
-    v = Geom::Vector3d.new(vec[0].to_f, vec[1].to_f, vec[2].to_f)
+    # Смещение — это длина, поэтому приходит в миллиметрах.
+    v = Geom::Vector3d.new(mm(vec[0]), mm(vec[1]), mm(vec[2]))
     model.start_operation('MCP: Move', true)
     entity.transform!(Geom::Transformation.translation(v))
     model.commit_operation
-    { status: 'moved', entity_id: eid, vector: vec3(v) }
+    { status: 'moved', entity_id: eid, vector: vec.map(&:to_f), units: 'mm' }
   end
 
   def self.handle_rotate_entity(p)
@@ -579,12 +642,15 @@ module SU_MCP
   # --- Roof Truss (simple built-in) ---
 
   def self.handle_create_roof_truss(p)
-    span_ft     = p['span'].to_f
+    # Длины — в миллиметрах, как и везде. Уклон остаётся отношением, а
+    # типоразмер пиломатериала — названием из каталога: и то и другое не длина.
+    # Значения по умолчанию — привычные 610 мм между стропилами и свес 300 мм.
+    span_mm     = p['span'].to_f
     pitch_str   = p['pitch'] || '6:12'
     truss_type  = p['type']  || 'fink'
     count       = (p['count'] || 1).to_i
-    spacing     = (p['spacing'] || 24).to_f
-    overhang    = (p['overhang'] || 12).to_f
+    spacing     = mm((p['spacing']  || 610).to_f)
+    overhang    = mm((p['overhang'] || 300).to_f)
     lumber_str  = p['lumber_size'] || '2x4'
     origin      = p['origin'] ? parse_point(p['origin']) : ORIGIN
     layer_name  = p['layer']
@@ -592,11 +658,11 @@ module SU_MCP
     # Parse pitch
     parts = pitch_str.split(':')
     rise_per_12 = parts[0].to_f
-    span_in = span_ft * 12.0
+    span_in = mm(span_mm)
     half_span = span_in / 2.0
     peak_height = half_span * (rise_per_12 / 12.0)
 
-    # Lumber actual dimensions
+    # Фактические размеры пиломатериала — дюймовые по определению стандарта.
     lumber_dims = {
       '2x4' => [1.5, 3.5],
       '2x6' => [1.5, 5.5],
@@ -683,6 +749,359 @@ module SU_MCP
   # Route table
   # ---------------------------------------------------------------------------
 
+  # ---------------------------------------------------------------------------
+  # Булевы операции, фаски и скругления
+  #
+  # Алгоритмы перенесены из zinin/sketchup-mcp2 (MIT) — там они добыты опытом
+  # и закреплены тестами. Ниже сохранены все объяснения «почему именно так»:
+  # без них код выглядит переусложнённым, а на деле каждый шаг обходит
+  # конкретную ловушку SketchUp.
+  #
+  # ЕДИНИЦЫ: как и весь остальной файл, эти обработчики принимают внутренние
+  # единицы SketchUp (дюймы). У zinin на входе миллиметры с конвертацией; здесь
+  # конвертации нет намеренно — две разные единицы в одном файле опаснее, чем
+  # одна непривычная. Перевод всего плагина на миллиметры — отдельная задача.
+  # ---------------------------------------------------------------------------
+
+  BOOLEAN_OPS = %w[union difference intersection].freeze
+
+  # Инструменты работы с телами (union/subtract/intersect) живут на Group и
+  # ComponentInstance, а не на Entities.
+  def self.require_solid!(entity, label)
+    unless entity.is_a?(Sketchup::Group) || entity.is_a?(Sketchup::ComponentInstance)
+      raise "#{label} must be a Group or ComponentInstance (got #{entity.class})"
+    end
+    entity
+  end
+
+  def self.fetch_solid!(p, key)
+    id = p[key]
+    raise "#{key} is required" if id.nil?
+    entity = find_entity_by_id(id)
+    raise "#{key}=#{id} not found" unless entity
+    require_solid!(entity, key)
+  end
+
+  def self.describe_solid(e)
+    b = e.bounds
+    {
+      id:     e.entityID,
+      type:   e.class.name.split('::').last,
+      name:   (e.respond_to?(:name) ? e.name : nil),
+      bounds: {
+        min:  pt_mm(b.min), max: pt_mm(b.max),
+        size: [to_mm(b.width), to_mm(b.height), to_mm(b.depth)]
+      },
+      units: 'mm'
+    }
+  end
+
+  def self.safe_abort(m)
+    m.abort_operation
+  rescue StandardError
+    nil
+  end
+
+  # Точная копия через экземпляр определения: сохраняет внутренние контуры
+  # (отверстия), материалы, вложенные объекты и развёртку — ничего этого не
+  # даст ручное копирование граней. Копия создаётся СОСЕДОМ оригинала, иначе
+  # последующие операции с телами не сработают для вложенных целей.
+  def self.duplicate_solid(entity)
+    entity.parent.entities.add_instance(entity.definition, entity.transformation)
+  end
+
+  def self.handle_boolean_operation(p)
+    operation = p['operation'].to_s
+    unless BOOLEAN_OPS.include?(operation)
+      raise "operation must be one of #{BOOLEAN_OPS.join(', ')} (got #{operation.inspect})"
+    end
+    delete_originals = (p['delete_originals'] == true)
+
+    m = model
+    m.start_operation("MCP: Boolean #{operation}", true)
+    begin
+      target = fetch_solid!(p, 'target_id')
+      tool   = fetch_solid!(p, 'tool_id')
+
+      # Операции с телами РАЗРУШИТЕЛЬНЫ: они стирают операнды и возвращают новую
+      # группу. Поэтому работаем на копиях, чтобы оригиналы пользователя выжили.
+      target_copy = duplicate_solid(target)
+      tool_copy   = duplicate_solid(tool)
+
+      # ВНИМАНИЕ. Group#subtract работает ОБРАТНО ожиданию: A.subtract(B)
+      # возвращает «B − A», то есть аргумент минус получатель. Чтобы получить
+      # «цель минус инструмент», вызывать надо tool.subtract(target).
+      # Официальная документация противоречит сама себе, поэтому направление
+      # закреплено опытом, а не доками. union и intersect коммутативны —
+      # порядок там роли не играет.
+      result = case operation
+               when 'union'        then target_copy.union(tool_copy)
+               when 'difference'   then tool_copy.subtract(target_copy)
+               when 'intersection' then target_copy.intersect(tool_copy)
+               end
+
+      # На немногообразной геометрии операции молча возвращают nil.
+      raise "boolean #{operation} failed (likely non-manifold geometry)" if result.nil?
+
+      if delete_originals
+        target.erase! if target.valid?
+        tool.erase!   if tool.valid?
+      end
+
+      description = describe_solid(result)
+      m.commit_operation
+      description
+    rescue StandardError
+      safe_abort(m)
+      raise
+    end
+  end
+
+  # --- Фаски и скругления ---------------------------------------------------
+  #
+  # Почему по одному ребру за раз, а не всё сразу: у тела, где рёбра сходятся
+  # в общих углах, несколько профилей в ОДНОЙ группе-резце пересекают сами
+  # себя в этих углах. Операции с телами требуют, чтобы оба операнда были
+  # многообразны, поэтому самопересекающийся резец даёт nil. По одному ребру —
+  # каждый резец остаётся чистой призмой.
+  #
+  # Почему два перпендикуляра В ПЛОСКОСТЯХ ГРАНЕЙ, а не нормаль: фаска снимает
+  # материал симметрично с ОБЕИХ смежных граней, и профиль должен лежать в
+  # плоскости, перпендикулярной ребру. Нормаль грани оказывается в этой
+  # плоскости только если ребро уже лежит в грани — иначе профиль уезжает
+  # НАРУЖУ тела и вычитать становится нечего.
+
+  # Смещение резца, дюймы. Больше допуска SketchUp в 0.001.
+  CUTTER_OFFSET = 0.005
+
+  def self.handle_chamfer_edges(p)
+    raise 'distance must be positive' unless p['distance'].to_f > 0
+    distance = mm(p['distance']) # внутрь — в дюймах
+    run_edge_op(p, 'MCP: Chamfer', distance * 2) do |cutter_entities, spec|
+      build_chamfer_profile(cutter_entities, spec, distance)
+    end
+  end
+
+  def self.handle_fillet_edges(p)
+    raise 'radius must be positive' unless p['radius'].to_f > 0
+    radius = mm(p['radius'])
+    segments = (p['segments'] || 8).to_i
+    raise 'segments must be positive' unless segments > 0
+    run_edge_op(p, 'MCP: Fillet', radius * 2) do |cutter_entities, spec|
+      build_fillet_profile(cutter_entities, spec, radius, segments)
+    end
+  end
+
+  def self.solid_entities(entity)
+    entity.is_a?(Sketchup::Group) ? entity.entities : entity.definition.entities
+  end
+
+  # Общий движок для фаски и скругления. Снимок рёбер делается ОДИН раз, но
+  # перед каждым резом ребро ищется заново в текущей геометрии: после каждого
+  # вычитания тело меняется, углы срезаются, середины рёбер уезжают, и строить
+  # следующий резец по старому снимку значит промахнуться мимо тела.
+  def self.run_edge_op(p, op_name, match_tolerance)
+    edge_indices = p['edge_indices']
+    if edge_indices && !edge_indices.is_a?(Array)
+      raise "edge_indices must be an array of integers (got #{edge_indices.class})"
+    end
+
+    m = model
+    m.start_operation(op_name, true)
+    stats = { 'attempted' => 0, 'skipped_no_match' => 0,
+              'subtract_failed' => 0, 'succeeded' => 0 }
+    begin
+      entity = fetch_solid!(p, 'entity_id')
+      edges = solid_entities(entity).grep(Sketchup::Edge)
+      edges = edges.select.with_index { |_, i| edge_indices.include?(i) } if edge_indices
+      raise "no edges to process on entity_id=#{p['entity_id']}" if edges.empty?
+
+      original_specs = edges.map { |e| edge_spec(e, entity.transformation) }
+      stats['attempted'] = original_specs.length
+
+      # Результат вычитания может стать «протухшим» указателем после следующих
+      # разрушительных операций, а числовой идентификатор остаётся годным.
+      last_result_id = nil
+
+      original_specs.each do |orig|
+        live_spec = find_current_edge_spec(entity, orig, match_tolerance)
+        if live_spec.nil?
+          stats['skipped_no_match'] += 1
+          next # ребро съедено предыдущим резом
+        end
+
+        cutter  = entity.parent.entities.add_group
+        profile = yield(cutter.entities, live_spec)
+        profile.followme(reconstruct_edge(cutter.entities, live_spec))
+
+        # Снова обратная семантика: чтобы получить «тело минус резец»,
+        # вызываем cutter.subtract(entity).
+        result = cutter.subtract(entity)
+        if result.nil?
+          stats['subtract_failed'] += 1
+          cutter.erase! if cutter.valid?
+          next
+        end
+        last_result_id = result.entityID
+        entity = result
+        stats['succeeded'] += 1
+      end
+
+      if stats['succeeded'] == 0
+        raise "#{op_name}: no edges could be cut (geometry may be non-manifold)"
+      end
+
+      # Перечитываем по идентификатору: после цепочки вычитаний локальная
+      # ссылка бывает невалидной, а describe вызываем ДО commit_operation —
+      # фиксация транзакции тоже обесценивает указатели на результат.
+      fresh = last_result_id ? m.find_entity_by_id(last_result_id) : nil
+      raise "#{op_name}: final entity invalid (id=#{last_result_id})" if fresh.nil? || !fresh.valid?
+
+      description = describe_solid(fresh).merge(stats: stats)
+      m.commit_operation
+      description
+    rescue StandardError
+      safe_abort(m)
+      raise
+    end
+  end
+
+  # Ищем в теле ребро, пришедшее на смену исходному: параллельное направление
+  # плюс середина в пределах допуска. nil — исходное ребро срезано предыдущим.
+  def self.find_current_edge_spec(entity, orig_spec, tolerance)
+    cur_edges = solid_entities(entity).grep(Sketchup::Edge).select { |e| e.faces.length >= 2 }
+    return nil if cur_edges.empty?
+
+    orig_dir = orig_spec[:end_pos] - orig_spec[:start_pos]
+    return nil if orig_dir.length < 1e-10
+    orig_dir.length = 1.0
+    orig_mid = midpoint_of(orig_spec[:start_pos], orig_spec[:end_pos])
+
+    xform = entity.transformation
+    best = nil
+    best_dist = 1.0 / 0.0 # бесконечность
+    cur_edges.each do |edge|
+      cs = xform * edge.start.position
+      ce = xform * edge.end.position
+      cur_dir = ce - cs
+      next if cur_dir.length < 1e-10
+      cur_dir.length = 1.0
+      next unless cur_dir.parallel?(orig_dir)
+
+      dist = orig_mid.distance(midpoint_of(cs, ce))
+      if dist < best_dist
+        best_dist = dist
+        best = edge
+      end
+    end
+
+    return nil if best.nil? || best_dist > tolerance
+    edge_spec(best, entity.transformation)
+  end
+
+  def self.midpoint_of(a, b)
+    Geom::Point3d.new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0, (a.z + b.z) / 2.0)
+  end
+
+  # Снимок ребра вместе с внутренними перпендикулярами ОБЕИХ смежных граней.
+  # Всё проецируется через преобразование, чтобы жить в системе координат
+  # родителя — там же, где будет создан резец.
+  def self.edge_spec(edge, xform)
+    faces = edge.faces.first(2)
+    if faces.length < 2
+      raise "edge ##{edge.entityID} has #{faces.length} adjacent face(s); " \
+            'chamfer/fillet requires a closed dihedral (2 faces)'
+    end
+
+    edge_pt  = edge.start.position
+    edge_end = edge.end.position
+    edge_dir = edge_end - edge_pt
+    edge_dir.length = 1.0
+
+    {
+      start_pos: xform * edge_pt,
+      end_pos:   xform * edge_end,
+      perp1:     xform * in_face_perp_inward(faces[0], edge_pt, edge_dir),
+      perp2:     xform * in_face_perp_inward(faces[1], edge_pt, edge_dir)
+    }
+  end
+
+  # Единичный вектор в плоскости грани, перпендикулярный ребру и направленный
+  # внутрь грани. Знак выбираем по центру габарита грани.
+  def self.in_face_perp_inward(face, edge_pt, edge_dir)
+    perp = edge_dir.cross(face.normal)
+    if perp.length < 1e-10
+      perp = edge_dir.parallel?(Z_AXIS) ? X_AXIS.clone : Z_AXIS.clone
+    end
+    perp.length = 1.0
+    to_interior = face.bounds.center - edge_pt
+    perp = perp.reverse if perp.dot(to_interior) < 0
+    perp
+  end
+
+  # Среднее перпендикуляров — смотрит внутрь снимаемого клина.
+  def self.perp_avg(spec)
+    v = Geom::Vector3d.new(
+      spec[:perp1].x + spec[:perp2].x,
+      spec[:perp1].y + spec[:perp2].y,
+      spec[:perp1].z + spec[:perp2].z
+    )
+    v.length = 1.0 if v.length > 1e-10
+    v
+  end
+
+  # Резец намеренно вылезает за тело со всех сторон. Иначе его грани совпадают
+  # с гранями цели по плоскости, а на совпадающих плоскостях вычитание
+  # схлопывается и возвращает пустую группу.
+  def self.cutter_path_start(spec)
+    dir = spec[:end_pos] - spec[:start_pos]
+    dir.length = 1.0
+    spec[:start_pos]
+      .offset(dir.reverse, CUTTER_OFFSET)
+      .offset(perp_avg(spec).reverse, CUTTER_OFFSET / 2.0)
+  end
+
+  def self.cutter_path_end(spec)
+    dir = spec[:end_pos] - spec[:start_pos]
+    dir.length = 1.0
+    spec[:end_pos]
+      .offset(dir, CUTTER_OFFSET)
+      .offset(perp_avg(spec).reverse, CUTTER_OFFSET / 2.0)
+  end
+
+  def self.reconstruct_edge(ents, spec)
+    ents.add_line(cutter_path_start(spec), cutter_path_end(spec))
+  end
+
+  # Профиль фаски — прямоугольный треугольник в плоскости, перпендикулярной
+  # ребру. Протягивание вдоль ребра даёт треугольную призму: ровно тот клин,
+  # который надо снять с двугранного угла.
+  def self.build_chamfer_profile(ents, spec, distance)
+    origin = cutter_path_start(spec)
+    ents.add_face(
+      origin,
+      origin.offset(spec[:perp1], distance),
+      origin.offset(spec[:perp2], distance)
+    )
+  end
+
+  # Профиль скругления — четверть дуги плюс угловая точка, чтобы контур
+  # замкнулся. Протягивание даёт четверть цилиндра.
+  def self.build_fillet_profile(ents, spec, radius, segments)
+    origin = cutter_path_start(spec)
+    perp1  = spec[:perp1]
+    perp2  = spec[:perp2]
+    arc_center = origin.offset(perp1, radius).offset(perp2, radius)
+
+    arc = (0..segments).map do |i|
+      theta = Math::PI / 2 * i.to_f / segments
+      arc_center
+        .offset(perp2.reverse, radius * Math.cos(theta))
+        .offset(perp1.reverse, radius * Math.sin(theta))
+    end
+    ents.add_face(arc + [origin])
+  end
+
   # --- Идентификация и вид ---
 
   # Кто я такой и какая модель во мне открыта. По этому ответу внешняя сторона
@@ -735,6 +1154,9 @@ module SU_MCP
   ROUTES = {
     ['GET',  '/instance/info']           => :handle_instance_info,
     ['POST', '/view/screenshot']         => :handle_viewport_screenshot,
+    ['POST', '/operations/boolean']      => :handle_boolean_operation,
+    ['POST', '/operations/chamfer']      => :handle_chamfer_edges,
+    ['POST', '/operations/fillet']       => :handle_fillet_edges,
     ['GET',  '/model/info']              => :handle_get_model_info,
     ['GET',  '/model/layers']            => :handle_list_layers,
     ['GET',  '/model/materials']         => :handle_list_materials,
@@ -1021,8 +1443,18 @@ module SU_MCP
   # SketchUp menu registration & auto-start
   # ---------------------------------------------------------------------------
 
+  # Визитку надо убрать и при обычном закрытии SketchUp: stop_server вызывается
+  # только из меню, а при выходе из приложения процесс просто исчезает.
+  class AppWatcher < Sketchup::AppObserver
+    def onQuit
+      SU_MCP.remove_card
+    end
+  end
+
   unless file_loaded?(__FILE__)
-    log "Loading SketchUp MCP Plugin v2.0"
+    log "Loading SketchUp MCP Plugin v2.2"
+    Sketchup.add_observer(AppWatcher.new) rescue nil
+    at_exit { SU_MCP.remove_card rescue nil }
     log "Ruby #{RUBY_VERSION} | SketchUp #{Sketchup.version}"
 
     menu = UI.menu('Plugins').add_submenu('MCP Server')
