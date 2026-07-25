@@ -4,6 +4,9 @@ import type { TowerParams } from '../store/viewport'
 /** Пайплайн считает в миллиметрах, three — в метрах. */
 export const MM = 0.001
 
+/** Толщина перекрытия, мм. */
+export const SLAB_THICKNESS = 260
+
 /**
  * Кольцо плана на этаже `floor`.
  *

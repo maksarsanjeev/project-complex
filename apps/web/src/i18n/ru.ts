@@ -21,6 +21,17 @@ export const ru = {
   'rail.newSession': 'новая сессия',
   'rail.empty': 'ничего не найдено',
   'rail.layers': 'слои по материалу',
+  'rail.rename': 'переименовать',
+  'rail.delete': 'в корзину',
+  'rail.trash': 'корзина',
+  'rail.trashEmpty': 'корзина пуста',
+  'rail.restore': 'вернуть',
+  'rail.purge': 'удалить навсегда',
+  'rail.purgeConfirm': 'удалить безвозвратно?',
+  'rail.searchHint': 'ищет и по тексту переписки',
+
+  'outliner.visibility': 'видимость',
+  'outliner.lock': 'блокировка',
 
   /* ── статусы ────────────────────────────────────────────── */
   'status.idle': 'ожидание',
@@ -87,6 +98,7 @@ export const ru = {
   'tools.section.create': 'построение',
   'tools.section.modify': 'изменение',
   'tools.section.inspect': 'инспектор',
+  'tools.section.model': 'параметры модели',
   'tools.section.engine': 'движок',
   'tools.section.export': 'экспорт',
   'tools.section.kb': 'база знаний',
@@ -105,6 +117,10 @@ export const ru = {
   'tools.transform': 'трансформ',
 
   'inspect.empty': 'ничего не выделено',
+  'inspect.emptyNode': 'узел не выбран',
+  'inspect.node': 'узел',
+  'inspect.part': 'часть модели',
+  'inspect.triangles': 'треугольников',
   'inspect.name': 'имя',
   'inspect.kind': 'тип',
   'inspect.material': 'материал',

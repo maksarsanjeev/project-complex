@@ -20,38 +20,117 @@ import * as fx from './fixtures'
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 let counter = 0
-const nextId = (prefix: string): string => `${prefix}-${(++counter).toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+const nextId = (prefix: string): string =>
+  `${prefix}-${(++counter).toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+
+/** Версию держим в ключе: при несовместимой смене формата старый слепок просто игнорируется. */
+const STORAGE_KEY = 'complex.mock.v1'
+
+interface Snapshot {
+  sessions: Session[]
+  messages: Record<string, ChatMessage[]>
+  graphs: Record<string, GraphDoc>
+}
+
+function loadSnapshot(): Snapshot | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Snapshot
+    if (!Array.isArray(parsed.sessions)) return null
+    return parsed
+  } catch {
+    // Битый или недоступный слепок — не повод падать, просто начинаем с фикстур.
+    return null
+  }
+}
 
 /**
  * Заглушка бэкенда: те же сигнатуры и тот же стриминг, что будут у gateway.
- * Компоненты работают только через интерфейс Transport, поэтому подмена
- * этого класса на WsTransport не потребует правок в UI.
+ *
+ * Состояние переживает перезагрузку страницы через localStorage — это временная
+ * мера на время этапа 1. Настоящее хранение появится на стороне gateway, и
+ * тогда весь этот класс заменится на WsTransport без правок в компонентах.
  */
 export class MockTransport implements Transport {
-  private sessions: Session[] = fx.sessions.map((s) => ({ ...s }))
-  private messagesBySession = new Map<string, ChatMessage[]>()
-  private graphBySession = new Map<string, GraphDoc>()
+  private sessions: Session[]
+  private messagesBySession: Map<string, ChatMessage[]>
+  private graphBySession: Map<string, GraphDoc>
+
+  constructor() {
+    const snapshot = loadSnapshot()
+    if (snapshot) {
+      this.sessions = snapshot.sessions
+      this.messagesBySession = new Map(Object.entries(snapshot.messages))
+      this.graphBySession = new Map(Object.entries(snapshot.graphs))
+      return
+    }
+
+    this.sessions = fx.sessions.map((s) => ({ ...s }))
+    this.messagesBySession = new Map()
+    this.graphBySession = new Map()
+    // Диалогом наполняем только «живую» сессию, остальные начинают пустыми.
+    for (const session of this.sessions) {
+      this.messagesBySession.set(
+        session.id,
+        session.id === 's-014' ? fx.messages.map((m) => ({ ...m })) : [],
+      )
+      this.graphBySession.set(session.id, structuredClone(fx.graph))
+    }
+    this.persist()
+  }
+
+  private persist(): void {
+    try {
+      const snapshot: Snapshot = {
+        sessions: this.sessions,
+        messages: Object.fromEntries(this.messagesBySession),
+        graphs: Object.fromEntries(this.graphBySession),
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot))
+    } catch {
+      // Переполнение квоты не должно ронять интерфейс.
+    }
+  }
+
+  private find(sessionId: string): Session | undefined {
+    return this.sessions.find((s) => s.id === sessionId)
+  }
+
+  private touch(session: Session): void {
+    session.updatedAt = new Date().toISOString()
+    session.messageCount = this.messagesBySession.get(session.id)?.length ?? 0
+  }
+
+  /* ── сессии ───────────────────────────────────────────────── */
 
   async listSessions(): Promise<Session[]> {
-    await sleep(120)
-    return this.sessions.map((s) => ({ ...s }))
+    await sleep(90)
+    return this.sessions.filter((s) => !s.deletedAt).map((s) => ({ ...s }))
+  }
+
+  async listTrash(): Promise<Session[]> {
+    await sleep(60)
+    return this.sessions.filter((s) => s.deletedAt).map((s) => ({ ...s }))
   }
 
   async openSession(sessionId: string): Promise<SessionState> {
-    await sleep(180)
-    const session = this.sessions.find((s) => s.id === sessionId) ?? this.sessions[0]
+    await sleep(140)
+    const session = this.find(sessionId) ?? this.sessions.find((s) => !s.deletedAt)
     if (!session) throw new Error('нет ни одной сессии')
 
-    const messages =
-      this.messagesBySession.get(session.id) ??
-      // Наполняем диалогом только «живую» сессию, остальные открываются пустыми.
-      (session.id === 's-014' ? fx.messages.map((m) => ({ ...m })) : [])
+    const messages = this.messagesBySession.get(session.id) ?? []
     this.messagesBySession.set(session.id, messages)
 
     const graph = this.graphBySession.get(session.id) ?? structuredClone(fx.graph)
     this.graphBySession.set(session.id, graph)
 
-    return { session: { ...session }, messages, scene: fx.scene.map((n) => ({ ...n })), graph }
+    return {
+      session: { ...session },
+      messages: messages.map((m) => ({ ...m })),
+      scene: [],
+      graph: structuredClone(graph),
+    }
   }
 
   async createSession(input: {
@@ -59,12 +138,16 @@ export class MockTransport implements Transport {
     project: string
     engine: EngineId
   }): Promise<Session> {
-    await sleep(140)
-    const n = this.sessions.length + 11
+    await sleep(110)
     const now = new Date().toISOString()
+    const numbers = this.sessions
+      .map((s) => Number.parseInt(s.code.replace(/\D/g, ''), 10))
+      .filter((n) => Number.isFinite(n))
+    const next = (numbers.length > 0 ? Math.max(...numbers) : 0) + 1
+
     const session: Session = {
       id: nextId('s'),
-      code: `SES-${String(n).padStart(3, '0')}`,
+      code: `SES-${String(next).padStart(3, '0')}`,
       title: input.title,
       project: input.project,
       engine: input.engine,
@@ -76,8 +159,76 @@ export class MockTransport implements Transport {
     this.sessions = [session, ...this.sessions]
     this.messagesBySession.set(session.id, [])
     this.graphBySession.set(session.id, { nodes: [], edges: [] })
+    this.persist()
     return { ...session }
   }
+
+  async renameSession(sessionId: string, title: string): Promise<Session> {
+    await sleep(70)
+    const session = this.find(sessionId)
+    if (!session) throw new Error('сессия не найдена')
+    session.title = title.trim() || session.title
+    session.updatedAt = new Date().toISOString()
+    this.persist()
+    return { ...session }
+  }
+
+  async deleteSession(sessionId: string): Promise<void> {
+    await sleep(70)
+    const session = this.find(sessionId)
+    if (!session) return
+    session.deletedAt = new Date().toISOString()
+    this.persist()
+  }
+
+  async restoreSession(sessionId: string): Promise<void> {
+    await sleep(70)
+    const session = this.find(sessionId)
+    if (!session) return
+    delete session.deletedAt
+    session.updatedAt = new Date().toISOString()
+    this.persist()
+  }
+
+  async purgeSession(sessionId: string): Promise<void> {
+    await sleep(70)
+    this.sessions = this.sessions.filter((s) => s.id !== sessionId)
+    this.messagesBySession.delete(sessionId)
+    this.graphBySession.delete(sessionId)
+    this.persist()
+  }
+
+  async searchSessions(query: string): Promise<Session[]> {
+    await sleep(90)
+    const q = query.trim().toLowerCase()
+    const live = this.sessions.filter((s) => !s.deletedAt)
+    if (!q) return live.map((s) => ({ ...s }))
+
+    return live
+      .filter((s) => {
+        if (
+          s.title.toLowerCase().includes(q) ||
+          s.project.toLowerCase().includes(q) ||
+          s.code.toLowerCase().includes(q)
+        ) {
+          return true
+        }
+        // Содержимое переписки: и текст сообщений, и код инструментальных вызовов.
+        return (this.messagesBySession.get(s.id) ?? []).some(
+          (m) =>
+            m.content.toLowerCase().includes(q) ||
+            (m.toolCalls ?? []).some(
+              (tc) =>
+                tc.name.toLowerCase().includes(q) ||
+                (tc.code ?? '').toLowerCase().includes(q) ||
+                (tc.result ?? '').toLowerCase().includes(q),
+            ),
+        )
+      })
+      .map((s) => ({ ...s }))
+  }
+
+  /* ── диалог ───────────────────────────────────────────────── */
 
   async *sendMessage(input: {
     sessionId: string
@@ -86,8 +237,20 @@ export class MockTransport implements Transport {
     modelId: string
   }): AsyncIterable<ChatEvent> {
     const provider = fx.providers.find((p) => p.id === input.modelId)
-    const messageId = nextId('m')
+    const session = this.find(input.sessionId)
+    const history = this.messagesBySession.get(input.sessionId) ?? []
+    this.messagesBySession.set(input.sessionId, history)
 
+    // Сообщение пользователя стор уже показал — здесь фиксируем его в хранилище.
+    history.push({
+      id: nextId('u'),
+      role: 'user',
+      content: input.text,
+      createdAt: new Date().toISOString(),
+      attachments: input.attachments,
+    })
+
+    const messageId = nextId('m')
     const message: ChatMessage = {
       id: messageId,
       role: 'assistant',
@@ -98,16 +261,17 @@ export class MockTransport implements Transport {
       toolCalls: [],
     }
 
-    await sleep(260)
+    await sleep(240)
     yield { type: 'message-start', message }
 
     const reply = draftReply(input.text)
+    let text = ''
     for (const chunk of chunkify(reply)) {
       await sleep(18 + Math.random() * 26)
+      text += chunk
       yield { type: 'token', messageId, text: chunk }
     }
 
-    // Один инструментальный вызов, чтобы был виден жизненный цикл блока.
     const call = {
       id: nextId('tc'),
       name: 'rhino_exec',
@@ -118,20 +282,23 @@ export class MockTransport implements Transport {
     yield { type: 'tool-call', messageId, toolCall: call }
 
     await sleep(900)
-    yield {
-      type: 'tool-update',
-      messageId,
-      toolCall: {
-        ...call,
-        status: 'ok',
-        result: 'геометрия построена, замкнутых тел 100%',
-        durationMs: 900 + Math.round(Math.random() * 3200),
-      },
+    const done = {
+      ...call,
+      status: 'ok' as const,
+      result: 'геометрия построена, замкнутых тел 100%',
+      durationMs: 900 + Math.round(Math.random() * 3200),
     }
+    yield { type: 'tool-update', messageId, toolCall: done }
 
-    await sleep(200)
+    await sleep(180)
+    history.push({ ...message, content: text, streaming: false, toolCalls: [done] })
+    if (session) this.touch(session)
+    this.persist()
+
     yield { type: 'message-end', messageId }
   }
+
+  /* ── задачи и справочники ─────────────────────────────────── */
 
   async *runJob(spec: JobSpec): AsyncIterable<JobEvent> {
     const job: Job = {
@@ -162,17 +329,17 @@ export class MockTransport implements Transport {
   }
 
   async listEngines(): Promise<EngineDescriptor[]> {
-    await sleep(90)
+    await sleep(80)
     return fx.engines.map((e) => ({ ...e }))
   }
 
   async listProviders(): Promise<ModelProvider[]> {
-    await sleep(70)
+    await sleep(60)
     return fx.providers.map((p) => ({ ...p }))
   }
 
   async searchKnowledge(query: string): Promise<KnowledgeHit[]> {
-    await sleep(220)
+    await sleep(200)
     const q = query.trim().toLowerCase()
     if (!q) return []
     const hits = fx.knowledge.filter(
@@ -185,8 +352,9 @@ export class MockTransport implements Transport {
   }
 
   async saveGraph(sessionId: string, doc: GraphDoc): Promise<void> {
-    await sleep(80)
+    await sleep(40)
     this.graphBySession.set(sessionId, structuredClone(doc))
+    this.persist()
   }
 }
 

@@ -13,13 +13,17 @@ import {
   Square,
   Triangle,
 } from 'lucide-react'
-import { useEffect, useState, type ComponentType } from 'react'
+import { useEffect, useMemo, useState, type ComponentType } from 'react'
 import { transport } from '../api/transport'
 import { t } from '../i18n'
+import { NODE_KINDS } from '../nodes/catalog'
 import { useEngines } from '../store/engine'
+import { useLayout } from '../store/layout'
 import { useSession } from '../store/session'
 import { useViewport } from '../store/viewport'
 import { IdChip, Label, NumField, Section, StatusMark, type MarkState } from '../ui'
+import { buildSceneTree, findPart } from '../viewport/sceneTree'
+import { ParamField } from './ParamField'
 import s from './panels.module.css'
 
 type IconType = ComponentType<{ size?: number; strokeWidth?: number }>
@@ -67,19 +71,91 @@ function ToolGrid({ items }: { items: Array<[IconType, string]> }) {
   )
 }
 
-/* ── инспектор: правит параметры демо-модели прямо во вьюпорте ─── */
+/* ── инспектор ────────────────────────────────────────────────── */
 
-function Inspector() {
-  const params = useViewport((v) => v.params)
-  const setParam = useViewport((v) => v.setParam)
-  const selected = useViewport((v) => v.selected)
+/** Настройки выбранного узла графа — поля строятся по каталогу типов. */
+function NodeInspector() {
+  const nodeId = useSession((x) => x.selectedNodeId)
+  const graph = useSession((x) => x.graph)
+  const update = useSession((x) => x.updateNodeParam)
+
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return <Label>{t('inspect.emptyNode')}</Label>
+
+  const specs = NODE_KINDS[node.kind].params
 
   return (
     <>
       <div className={s.kv}>
-        <Label>{t('inspect.name')}</Label>
-        <span className={s.kvValue}>{selected ?? t('inspect.empty')}</span>
+        <Label>{t('inspect.node')}</Label>
+        <span className={s.kvValue}>{node.title}</span>
       </div>
+      <div className={s.kv}>
+        <Label>{t('inspect.kind')}</Label>
+        <span className={s.kvValue}>{node.kind}</span>
+      </div>
+      <div className={s.fields}>
+        {specs.map((spec) => (
+          <ParamField
+            key={spec.key}
+            spec={spec}
+            value={node.params?.[spec.key]}
+            onChange={(value) => update(node.id, spec.key, value)}
+          />
+        ))}
+      </div>
+    </>
+  )
+}
+
+/** Свойства выделенной части модели — значения настоящие, из геометрии сцены. */
+function PartInspector() {
+  const params = useViewport((v) => v.params)
+  const selected = useViewport((v) => v.selected)
+  const tree = useMemo(() => buildSceneTree(params), [params])
+  const found = selected ? findPart(tree, selected) : null
+
+  if (!found) return <Label>{t('inspect.empty')}</Label>
+
+  const { part, material } = found
+  const [x, y, z] = part.size
+
+  return (
+    <div className={s.fields}>
+      <div className={s.kv}>
+        <Label>{t('inspect.name')}</Label>
+        <span className={s.kvValue}>{part.name}</span>
+      </div>
+      <div className={s.kv}>
+        <Label>{t('inspect.kind')}</Label>
+        <span className={s.kvValue}>{part.kind}</span>
+      </div>
+      <div className={s.kv}>
+        <Label>{t('inspect.material')}</Label>
+        <span className={s.kvValue}>{material}</span>
+      </div>
+      <div className={s.kv}>
+        <Label>{t('inspect.size')}</Label>
+        <span className={s.kvValue}>
+          {x.toLocaleString('ru-RU')} × {y.toLocaleString('ru-RU')} × {z.toLocaleString('ru-RU')}{' '}
+          {t('common.mm')}
+        </span>
+      </div>
+      <div className={s.kv}>
+        <Label>{t('inspect.triangles')}</Label>
+        <span className={s.kvValue}>{part.triangles.toLocaleString('ru-RU')}</span>
+      </div>
+    </div>
+  )
+}
+
+/** Параметры демо-модели: правятся здесь, геометрия пересобирается сразу. */
+function ModelParams() {
+  const params = useViewport((v) => v.params)
+  const setParam = useViewport((v) => v.setParam)
+
+  return (
+    <>
       <div className={s.fields}>
         <NumField label="этажей" value={params.floors} onChange={(v) => setParam('floors', v)} />
         <NumField
@@ -257,18 +333,28 @@ function Knowledge() {
 /* ── панель целиком ───────────────────────────────────────────── */
 
 export function ToolsPanel() {
+  const tab = useLayout((l) => l.tab)
+
   return (
     <div className={s.tools}>
       <div className={s.toolsScroll}>
-        <Section title={t('tools.section.create')}>
+        <Section title={t('tools.section.create')} defaultOpen={tab === 'viewport'}>
           <ToolGrid items={CREATE} />
         </Section>
-        <Section title={t('tools.section.modify')}>
+        <Section title={t('tools.section.modify')} defaultOpen={false}>
           <ToolGrid items={MODIFY} />
         </Section>
+
+        {/* Инспектор контекстный: в графе — настройки узла, во вьюпорте — свойства части. */}
         <Section title={t('tools.section.inspect')}>
-          <Inspector />
+          {tab === 'nodes' ? <NodeInspector /> : <PartInspector />}
         </Section>
+
+        {tab === 'viewport' ? (
+          <Section title={t('tools.section.model')}>
+            <ModelParams />
+          </Section>
+        ) : null}
         <Section title={t('tools.section.engine')}>
           <Engines />
         </Section>

@@ -20,7 +20,7 @@ import { t } from '../i18n'
 import { useLayout } from '../store/layout'
 import { useSession } from '../store/session'
 import { IconButton, Label } from '../ui'
-import { NODE_KINDS, NODE_ORDER } from './catalog'
+import { NODE_KINDS, NODE_ORDER, defaultParams, portsCompatible } from './catalog'
 import { ComplexNode, type ComplexFlowNode } from './ComplexNode'
 import s from './nodes.module.css'
 import './reactflow.css'
@@ -121,6 +121,7 @@ function Palette({ onPick, onClose }: { onPick: (kind: NodeKind) => void; onClos
 function Graph() {
   const graph = useSession((x) => x.graph)
   const setGraph = useSession((x) => x.setGraph)
+  const selectNode = useSession((x) => x.selectNode)
   const theme = useLayout((x) => x.theme)
   const tab = useLayout((x) => x.tab)
 
@@ -132,6 +133,8 @@ function Graph() {
   const counter = useRef(0)
   /** Документ, который мы сами только что отдали в стор — перечитывать его не нужно. */
   const committed = useRef<GraphDoc | null>(null)
+  /** Набор узлов на момент последней перевписки вида. */
+  const lastSignature = useRef('')
   const { screenToFlowPosition, fitView } = useReactFlow()
 
   // Следим за самим документом, а не за id сессии: select() выставляет activeId
@@ -139,9 +142,23 @@ function Graph() {
   useEffect(() => {
     if (graph === committed.current) return
     counter.current = graph.nodes.length
-    setNodes(toFlowNodes(graph))
+
+    // Выделение переносим на новые объекты: инспектор правит параметры через
+    // стор, и без этого узел терял бы выделение на каждом нажатии клавиши.
+    setNodes((current) => {
+      const selectedIds = new Set(current.filter((n) => n.selected).map((n) => n.id))
+      return toFlowNodes(graph).map((n) =>
+        selectedIds.has(n.id) ? { ...n, selected: true } : n,
+      )
+    })
     setEdges(toFlowEdges(graph))
-    setLoadTick((t) => t + 1)
+
+    // Перевписываем вид только когда изменился НАБОР узлов, а не их настройки.
+    const signature = graph.nodes.map((n) => n.id).join(',')
+    if (signature !== lastSignature.current) {
+      lastSignature.current = signature
+      setLoadTick((t) => t + 1)
+    }
   }, [graph, setNodes, setEdges])
 
   // Вписываем граф, когда вкладка становится активной: при монтировании она
@@ -176,6 +193,40 @@ function Graph() {
     [nodes, setEdges, push],
   )
 
+  /**
+   * Валидация связи: типы портов обязаны совпадать — геометрия не втыкается
+   * в параметры. Заодно запрещаем петлю на себя и повторную связь тех же портов.
+   */
+  const isValidConnection = useCallback(
+    (connection: Connection | Edge) => {
+      if (connection.source === connection.target) return false
+
+      const source = nodes.find((n) => n.id === connection.source)
+      const target = nodes.find((n) => n.id === connection.target)
+      if (!source || !target) return false
+
+      const from = source.data.outputs.find((p) => p.id === connection.sourceHandle)?.type
+      const to = target.data.inputs.find((p) => p.id === connection.targetHandle)?.type
+      if (!portsCompatible(from, to)) return false
+
+      return !edges.some(
+        (e) =>
+          e.source === connection.source &&
+          e.sourceHandle === connection.sourceHandle &&
+          e.target === connection.target &&
+          e.targetHandle === connection.targetHandle,
+      )
+    },
+    [nodes, edges],
+  )
+
+  // Выделение отдаём в стор эффектом, а не колбэком onSelectionChange:
+  // тот вызывается в фазе рендера React Flow, и запись в стор оттуда роняет
+  // предупреждение «setState во время рендера другого компонента».
+  useEffect(() => {
+    selectNode(nodes.find((n) => n.selected)?.id ?? null)
+  }, [nodes, selectNode])
+
   const addNode = useCallback(
     (kind: NodeKind) => {
       const spec = NODE_KINDS[kind]
@@ -194,6 +245,7 @@ function Graph() {
           title: spec.title,
           inputs: spec.inputs,
           outputs: spec.outputs,
+          params: defaultParams(kind),
           status: 'pending',
         },
       }
@@ -233,6 +285,7 @@ function Graph() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        isValidConnection={isValidConnection}
         onNodeDragStop={() => commit()}
         onNodesDelete={() => commit()}
         onEdgesDelete={() => commit()}

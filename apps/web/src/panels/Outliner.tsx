@@ -1,21 +1,43 @@
 import { Eye, EyeOff, Lock, Unlock } from 'lucide-react'
+import { useMemo } from 'react'
 import { t } from '../i18n'
-import { useSession } from '../store/session'
+import { useViewport, type PartId } from '../store/viewport'
+import { buildSceneTree, flatParts } from '../viewport/sceneTree'
 import { IconButton, Label } from '../ui'
 import s from './panels.module.css'
 
 /**
- * Дерево сцены. Слои названы по МАТЕРИАЛУ — так материал назначается одним
- * кликом, и так устроены рабочие файлы проекта.
+ * Дерево сцены. Строится из реальной модели вьюпорта, поэтому видимость и
+ * блокировка здесь управляют настоящей геометрией, а не только строкой списка.
+ * Слои названы по МАТЕРИАЛУ — так материал назначается одним кликом.
  */
 export function Outliner() {
-  const scene = useSession((x) => x.scene)
-  const toggleVisible = useSession((x) => x.toggleNodeVisible)
-  const toggleLocked = useSession((x) => x.toggleNodeLocked)
+  const params = useViewport((v) => v.params)
+  const hidden = useViewport((v) => v.hidden)
+  const locked = useViewport((v) => v.locked)
+  const selected = useViewport((v) => v.selected)
+  const toggleHidden = useViewport((v) => v.toggleHidden)
+  const toggleLocked = useViewport((v) => v.toggleLocked)
+  const select = useViewport((v) => v.select)
 
-  const total = scene
-    .filter((n) => n.kind === 'layer')
-    .reduce((sum, n) => sum + (n.triangles ?? 0), 0)
+  const tree = useMemo(() => buildSceneTree(params), [params])
+  const total = useMemo(
+    () => flatParts(tree).reduce((sum, part) => sum + part.triangles, 0),
+    [tree],
+  )
+
+  /**
+   * Слой переключается целиком: если видна хоть одна часть — гасим все,
+   * иначе показываем все. Та же логика для блокировки.
+   */
+  const toggleLayer = (
+    ids: PartId[],
+    flags: Record<PartId, boolean>,
+    toggle: (id: PartId) => void,
+  ) => {
+    const target = ids.some((id) => !flags[id])
+    for (const id of ids) if (flags[id] !== target) toggle(id)
+  }
 
   return (
     <>
@@ -27,41 +49,75 @@ export function Outliner() {
       </div>
 
       <div className={s.scroll}>
-        {scene.map((node) => {
-          const isLayer = node.kind === 'layer'
+        {tree.map((layer) => {
+          const ids = layer.parts.map((p) => p.id)
+          const layerHidden = ids.every((id) => hidden[id])
+          const layerLocked = ids.every((id) => locked[id])
+          const layerTris = layer.parts.reduce((sum, p) => sum + p.triangles, 0)
+
           return (
-            <div
-              key={node.id}
-              className={s.node}
-              data-layer={isLayer || undefined}
-              data-visible={node.visible ? 'true' : 'false'}
-            >
-              <span className={s.nodeIndent} style={{ width: isLayer ? 8 : 22 }} />
-              <span className={s.nodeName} title={node.name}>
-                {node.name}
-              </span>
-              {node.triangles ? (
-                <span className={s.nodeTris}>{node.triangles.toLocaleString('ru-RU')}</span>
-              ) : null}
-              <span className={s.nodeBtns}>
-                <IconButton
-                  onClick={() => toggleVisible(node.id)}
-                  title={node.visible ? t('common.collapse') : t('common.expand')}
+            <div key={layer.material}>
+              <div
+                className={s.node}
+                data-layer="true"
+                data-visible={layerHidden ? 'false' : 'true'}
+              >
+                <span className={s.nodeIndent} style={{ width: 8 }} />
+                <span className={s.nodeName} title={layer.material}>
+                  {layer.material}
+                </span>
+                <span className={s.nodeTris}>{layerTris.toLocaleString('ru-RU')}</span>
+                <span className={s.nodeBtns}>
+                  <IconButton
+                    onClick={() => toggleLayer(ids, hidden, toggleHidden)}
+                    title={t('outliner.visibility')}
+                  >
+                    {layerHidden ? <EyeOff size={12} strokeWidth={1} /> : <Eye size={12} strokeWidth={1} />}
+                  </IconButton>
+                  <IconButton
+                    onClick={() => toggleLayer(ids, locked, toggleLocked)}
+                    title={t('outliner.lock')}
+                  >
+                    {layerLocked ? <Lock size={12} strokeWidth={1} /> : <Unlock size={12} strokeWidth={1} />}
+                  </IconButton>
+                </span>
+              </div>
+
+              {layer.parts.map((part) => (
+                <div
+                  key={part.id}
+                  className={s.node}
+                  data-visible={hidden[part.id] ? 'false' : 'true'}
+                  data-selected={selected === part.id || undefined}
                 >
-                  {node.visible ? (
-                    <Eye size={12} strokeWidth={1} />
-                  ) : (
-                    <EyeOff size={12} strokeWidth={1} />
-                  )}
-                </IconButton>
-                <IconButton onClick={() => toggleLocked(node.id)}>
-                  {node.locked ? (
-                    <Lock size={12} strokeWidth={1} />
-                  ) : (
-                    <Unlock size={12} strokeWidth={1} />
-                  )}
-                </IconButton>
-              </span>
+                  <span className={s.nodeIndent} style={{ width: 22 }} />
+                  <button
+                    type="button"
+                    className={s.nodeName}
+                    title={part.name}
+                    onClick={() => select(selected === part.id ? null : part.id)}
+                  >
+                    {part.name}
+                  </button>
+                  <span className={s.nodeTris}>{part.triangles.toLocaleString('ru-RU')}</span>
+                  <span className={s.nodeBtns}>
+                    <IconButton onClick={() => toggleHidden(part.id)} title={t('outliner.visibility')}>
+                      {hidden[part.id] ? (
+                        <EyeOff size={12} strokeWidth={1} />
+                      ) : (
+                        <Eye size={12} strokeWidth={1} />
+                      )}
+                    </IconButton>
+                    <IconButton onClick={() => toggleLocked(part.id)} title={t('outliner.lock')}>
+                      {locked[part.id] ? (
+                        <Lock size={12} strokeWidth={1} />
+                      ) : (
+                        <Unlock size={12} strokeWidth={1} />
+                      )}
+                    </IconButton>
+                  </span>
+                </div>
+              ))}
             </div>
           )
         })}

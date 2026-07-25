@@ -108,6 +108,93 @@
   margin-top: 5px;
 }
 
+/* Действия появляются на наведении, чтобы не шуметь в списке. */
+.sessionActions {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: none;
+  align-items: center;
+  gap: 1px;
+  background: var(--bg);
+  border: var(--hair) solid var(--line);
+}
+
+.sessionRow:hover .sessionActions,
+.sessionRow:focus-within .sessionActions {
+  display: flex;
+}
+
+.sessionRow {
+  position: relative;
+}
+
+.renameInput {
+  width: 100%;
+  height: 20px;
+  padding: 0 5px;
+  border: var(--hair) solid var(--line-3);
+  background: var(--bg);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ink);
+}
+
+/* ── корзина ──────────────────────────────────────────────────── */
+
+.trashHead {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  height: 22px;
+  padding: 0 8px;
+  border-top: var(--hair) solid var(--line);
+  background: var(--bg-sunken);
+  text-align: left;
+}
+
+.trashHead:hover {
+  background: var(--fill);
+}
+
+.trashItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 8px 0 14px;
+  border-top: var(--hair) dashed var(--line);
+}
+
+.trashName {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.confirm {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.confirmBtn {
+  height: 17px;
+  padding: 0 6px;
+  border: var(--hair) solid var(--ink);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+}
+
 /* ── аутлайнер ────────────────────────────────────────────────── */
 
 .node {
@@ -137,9 +224,18 @@
   min-width: 0;
   font-size: var(--fs-xs);
   color: var(--ink);
+  text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.node[data-selected='true'] {
+  background: var(--fill-2);
+}
+
+.node[data-selected='true'] .nodeName {
+  font-weight: 500;
 }
 
 .node[data-visible='false'] .nodeName {
@@ -237,6 +333,89 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ── поля настроек узла ───────────────────────────────────────── */
+
+.field {
+  display: grid;
+  grid-template-columns: 82px 1fr;
+  align-items: center;
+  min-height: 21px;
+  gap: 6px;
+}
+
+.fieldLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.textInput,
+.selectInput {
+  width: 100%;
+  min-width: 0;
+  height: 21px;
+  padding: 0 6px;
+  border: var(--hair) solid var(--line);
+  background: var(--bg);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ink);
+}
+
+.textInput:focus,
+.selectInput:focus {
+  border-color: var(--line-3);
+}
+
+.textArea {
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  resize: vertical;
+  padding: 4px 6px;
+  border: var(--hair) solid var(--line);
+  background: var(--bg);
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+/* Тумблер: заполненный квадрат вместо галочки — в духе остального интерфейса. */
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 21px;
+  padding: 0 6px;
+  border: var(--hair) solid var(--line);
+  background: var(--bg);
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  color: var(--ink-3);
+}
+
+.toggle:hover {
+  border-color: var(--line-2);
+}
+
+.toggleBox {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border: var(--hair) solid var(--line-3);
+}
+
+.toggle[data-on='true'] {
+  color: var(--ink);
+}
+
+.toggle[data-on='true'] .toggleBox {
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 /* ── движки ───────────────────────────────────────────────────── */

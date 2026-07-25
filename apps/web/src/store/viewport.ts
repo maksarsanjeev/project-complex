@@ -30,6 +30,10 @@ export interface ViewStats {
   objects: number
 }
 
+export type PartFlags = Record<PartId, boolean>
+
+const NO_FLAGS: PartFlags = { core: false, slabs: false, diagrid: false, glass: false }
+
 interface ViewportState {
   mode: DisplayMode
   projection: Projection
@@ -38,6 +42,9 @@ interface ViewportState {
   selected: PartId | null
   params: TowerParams
   stats: ViewStats
+  /** Скрытые и заблокированные части — ими управляет аутлайнер. */
+  hidden: PartFlags
+  locked: PartFlags
   /** Имя файла, брошенного во вьюпорт. */
   droppedName: string | null
   fitToken: number
@@ -51,6 +58,8 @@ interface ViewportState {
   setStats: (stats: Partial<ViewStats>) => void
   setDropped: (name: string | null) => void
   fit: () => void
+  toggleHidden: (part: PartId) => void
+  toggleLocked: (part: PartId) => void
 }
 
 export const useViewport = create<ViewportState>()((set) => ({
@@ -68,6 +77,8 @@ export const useViewport = create<ViewportState>()((set) => ({
     ribSize: 700,
   },
   stats: { fps: 0, triangles: 0, objects: 0 },
+  hidden: NO_FLAGS,
+  locked: NO_FLAGS,
   droppedName: null,
   fitToken: 0,
 
@@ -83,6 +94,19 @@ export const useViewport = create<ViewportState>()((set) => ({
   setStats: (stats) => set((s) => ({ stats: { ...s.stats, ...stats } })),
   setDropped: (droppedName) => set({ droppedName }),
   fit: () => set((s) => ({ fitToken: s.fitToken + 1 })),
+
+  toggleHidden: (part) =>
+    set((s) => {
+      const hidden = { ...s.hidden, [part]: !s.hidden[part] }
+      // Скрытую часть снимаем с выделения — иначе инспектор показывает невидимое.
+      return { hidden, selected: hidden[part] && s.selected === part ? null : s.selected }
+    }),
+
+  toggleLocked: (part) =>
+    set((s) => {
+      const locked = { ...s.locked, [part]: !s.locked[part] }
+      return { locked, selected: locked[part] && s.selected === part ? null : s.selected }
+    }),
 }))
 
 /** Держим параметры в диапазонах, при которых сцена остаётся вменяемой. */

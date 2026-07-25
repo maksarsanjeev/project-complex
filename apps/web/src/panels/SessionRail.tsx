@@ -1,6 +1,6 @@
 import type { Session, SessionStatus } from '@complex/protocol'
-import { Plus, Search } from 'lucide-react'
-import { useMemo } from 'react'
+import { Pencil, Plus, RotateCcw, Search, Trash2, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { t } from '../i18n'
 import { useSession } from '../store/session'
 import { IconButton, IdChip, Label, StatusMark, type MarkState } from '../ui'
@@ -29,25 +29,139 @@ function when(iso: string): string {
   return `${Math.round(hours / 24)} сут`
 }
 
-function SessionCard({ session, active, onSelect }: {
+function SessionCard({
+  session,
+  active,
+  onSelect,
+}: {
   session: Session
   active: boolean
   onSelect: () => void
 }) {
+  const rename = useSession((x) => x.renameSession)
+  const remove = useSession((x) => x.deleteSession)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(session.title)
+
+  const commit = () => {
+    setEditing(false)
+    if (draft.trim() && draft !== session.title) void rename(session.id, draft)
+    else setDraft(session.title)
+  }
+
   return (
-    <button type="button" className={s.session} data-active={active || undefined} onClick={onSelect}>
-      <div className={s.sessionTop}>
-        <StatusMark state={MARK[session.status]} title={t(STATUS_KEY[session.status])} />
-        <IdChip>{session.code}</IdChip>
-        <Label>{session.engine}</Label>
-      </div>
-      <div className={s.sessionTitle}>{session.title}</div>
-      <div className={s.sessionMeta}>
-        <Label tone="ink2">{session.project}</Label>
-        <Label>{when(session.updatedAt)}</Label>
-        <Label>{session.messageCount} сбщ</Label>
-      </div>
-    </button>
+    <div className={s.sessionRow}>
+      <button type="button" className={s.session} data-active={active || undefined} onClick={onSelect}>
+        <div className={s.sessionTop}>
+          <StatusMark state={MARK[session.status]} title={t(STATUS_KEY[session.status])} />
+          <IdChip>{session.code}</IdChip>
+          <Label>{session.engine}</Label>
+        </div>
+
+        {editing ? null : <div className={s.sessionTitle}>{session.title}</div>}
+
+        <div className={s.sessionMeta}>
+          <Label tone="ink2">{session.project}</Label>
+          <Label>{when(session.updatedAt)}</Label>
+          <Label>{session.messageCount} сбщ</Label>
+        </div>
+      </button>
+
+      {editing ? (
+        <div style={{ padding: '0 9px 8px' }}>
+          <input
+            className={s.renameInput}
+            value={draft}
+            autoFocus
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commit()
+              if (e.key === 'Escape') {
+                setDraft(session.title)
+                setEditing(false)
+              }
+            }}
+          />
+        </div>
+      ) : null}
+
+      <span className={s.sessionActions}>
+        <IconButton
+          onClick={() => {
+            setDraft(session.title)
+            setEditing(true)
+          }}
+          title={t('rail.rename')}
+        >
+          <Pencil size={11} strokeWidth={1} />
+        </IconButton>
+        <IconButton onClick={() => void remove(session.id)} title={t('rail.delete')}>
+          <Trash2 size={11} strokeWidth={1} />
+        </IconButton>
+      </span>
+    </div>
+  )
+}
+
+/** Корзина: удаление обратимо, безвозвратное требует отдельного подтверждения. */
+function Trash() {
+  const trash = useSession((x) => x.trash)
+  const restore = useSession((x) => x.restoreSession)
+  const purge = useSession((x) => x.purgeSession)
+  const [open, setOpen] = useState(false)
+  const [confirming, setConfirming] = useState<string | null>(null)
+
+  if (trash.length === 0) return null
+
+  return (
+    <div>
+      <button type="button" className={s.trashHead} onClick={() => setOpen((v) => !v)}>
+        <Trash2 size={11} strokeWidth={1} />
+        <Label tone="strong">{t('rail.trash')}</Label>
+        <span style={{ marginLeft: 'auto' }}>
+          <Label>{trash.length}</Label>
+        </span>
+      </button>
+
+      {open
+        ? trash.map((session) => (
+            <div key={session.id} className={s.trashItem}>
+              <IdChip>{session.code}</IdChip>
+              <span className={s.trashName} title={session.title}>
+                {session.title}
+              </span>
+
+              {confirming === session.id ? (
+                <span className={s.confirm}>
+                  <button
+                    type="button"
+                    className={s.confirmBtn}
+                    onClick={() => {
+                      setConfirming(null)
+                      void purge(session.id)
+                    }}
+                  >
+                    {t('rail.purgeConfirm')}
+                  </button>
+                  <IconButton onClick={() => setConfirming(null)} title={t('common.cancel')}>
+                    <X size={11} strokeWidth={1} />
+                  </IconButton>
+                </span>
+              ) : (
+                <span className={s.confirm}>
+                  <IconButton onClick={() => void restore(session.id)} title={t('rail.restore')}>
+                    <RotateCcw size={11} strokeWidth={1} />
+                  </IconButton>
+                  <IconButton onClick={() => setConfirming(session.id)} title={t('rail.purge')}>
+                    <X size={11} strokeWidth={1} />
+                  </IconButton>
+                </span>
+              )}
+            </div>
+          ))
+        : null}
+    </div>
   )
 }
 
@@ -57,18 +171,14 @@ export function SessionRail() {
   const select = useSession((x) => x.select)
   const query = useSession((x) => x.query)
   const setQuery = useSession((x) => x.setQuery)
+  const refresh = useSession((x) => x.refresh)
   const createSession = useSession((x) => x.createSession)
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    if (!q) return sessions
-    return sessions.filter(
-      (x) =>
-        x.title.toLowerCase().includes(q) ||
-        x.project.toLowerCase().includes(q) ||
-        x.code.toLowerCase().includes(q),
-    )
-  }, [sessions, query])
+  // Поиск идёт через транспорт: он один видит тексты всех переписок.
+  useEffect(() => {
+    const id = setTimeout(() => void refresh(), 200)
+    return () => clearTimeout(id)
+  }, [query, refresh])
 
   return (
     <div className={s.rail}>
@@ -79,6 +189,7 @@ export function SessionRail() {
             className={s.searchInput}
             value={query}
             placeholder={t('rail.search')}
+            title={t('rail.searchHint')}
             onChange={(e) => setQuery(e.target.value)}
           />
           <IconButton onClick={() => void createSession()} title={t('rail.newSession')}>
@@ -87,12 +198,12 @@ export function SessionRail() {
         </div>
 
         <div className={s.scroll}>
-          {filtered.length === 0 ? (
+          {sessions.length === 0 ? (
             <div style={{ padding: 12 }}>
               <Label>{t('rail.empty')}</Label>
             </div>
           ) : (
-            filtered.map((session) => (
+            sessions.map((session) => (
               <SessionCard
                 key={session.id}
                 session={session}
@@ -101,6 +212,7 @@ export function SessionRail() {
               />
             ))
           )}
+          <Trash />
         </div>
       </div>
 

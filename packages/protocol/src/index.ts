@@ -98,6 +98,8 @@ export interface Session {
   updatedAt: Timestamp
   /** Кол-во сообщений — для превью в списке сессий. */
   messageCount: number
+  /** Проставлено — сессия в корзине; удаление обратимо. */
+  deletedAt?: Timestamp
 }
 
 export interface SessionState {
@@ -203,6 +205,27 @@ export type NodeKind =
 /** Тип порта задаётся ФОРМОЙ глифа, а не цветом: ● геометрия, ▲ параметры, ■ данные. */
 export type PortType = 'geometry' | 'params' | 'data'
 
+export type ParamType = 'number' | 'text' | 'boolean' | 'select'
+
+/**
+ * Описание одного редактируемого параметра узла. По нему инспектор строит поле
+ * нужного вида, а исполнитель графа знает, что и в каких единицах ему пришло.
+ */
+export interface ParamSpec {
+  key: string
+  label: string
+  type: ParamType
+  /** Единица измерения для числовых полей: мм, °, шт. */
+  unit?: string
+  min?: number
+  max?: number
+  step?: number
+  /** Варианты для типа select. */
+  options?: string[]
+}
+
+export type ParamValue = string | number | boolean
+
 export interface GraphPort {
   id: string
   name: string
@@ -218,8 +241,8 @@ export interface GraphNode {
   position: { x: number; y: number }
   inputs: GraphPort[]
   outputs: GraphPort[]
-  /** Произвольные настройки узла, отрисовываются в инспекторе. */
-  params?: Record<string, string | number | boolean>
+  /** Значения настроек узла; описание полей берётся из каталога типов. */
+  params?: Record<string, ParamValue>
   status?: ToolCallStatus
 }
 
@@ -285,9 +308,23 @@ export interface KnowledgeHit {
  * к gateway. Компоненты знают только про этот интерфейс.
  */
 export interface Transport {
+  /** Живые сессии. Удалённые в корзину сюда не попадают. */
   listSessions(): Promise<Session[]>
+  /** Содержимое корзины — удаление обратимо. */
+  listTrash(): Promise<Session[]>
   openSession(sessionId: string): Promise<SessionState>
   createSession(input: { title: string; project: string; engine: EngineId }): Promise<Session>
+  renameSession(sessionId: string, title: string): Promise<Session>
+  /** Переносит в корзину. Безвозвратно удаляет только purgeSession. */
+  deleteSession(sessionId: string): Promise<void>
+  restoreSession(sessionId: string): Promise<void>
+  purgeSession(sessionId: string): Promise<void>
+
+  /**
+   * Поиск по сессиям: заголовок, проект, код И содержимое переписки.
+   * Поиск по тексту сообщений делает сервер — на клиенте нет всех диалогов.
+   */
+  searchSessions(query: string): Promise<Session[]>
 
   sendMessage(input: {
     sessionId: string

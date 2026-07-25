@@ -6,6 +6,7 @@ import { useLayout } from '../store/layout'
 import { useViewport, type PartId } from '../store/viewport'
 import {
   MM,
+  SLAB_THICKNESS,
   buildRibMatrices,
   buildSkin,
   buildSlabMatrices,
@@ -13,9 +14,6 @@ import {
   towerRing,
 } from './geometry'
 import { useLoadedModel } from './loader'
-
-/** Толщина перекрытия, мм. */
-const SLAB_THICKNESS = 260
 
 /* ────────────────────────── палитра сцены ────────────────────────── */
 
@@ -169,6 +167,10 @@ function countScene(root: THREE.Object3D): { triangles: number; objects: number 
   root.traverse((node) => {
     const mesh = node as THREE.Mesh
     if (!mesh.isMesh || !mesh.geometry) return
+    // Служебная геометрия (сетка, гизмо) — не часть модели, в счётчики не идёт.
+    if (node.name.startsWith('helper:')) return
+    // Скрытое из аутлайнера не показываем и в счётчиках — иначе цифры врут.
+    if (!node.visible) return
     objects += 1
 
     const geometry = mesh.geometry
@@ -182,14 +184,16 @@ function countScene(root: THREE.Object3D): { triangles: number; objects: number 
 
 function SceneStats({ deps }: { deps: unknown }) {
   const setStats = useViewport((s) => s.setStats)
+  const hidden = useViewport((s) => s.hidden)
   const scene = useThree((s) => s.scene)
   const acc = useRef({ time: 0, frames: 0 })
 
   useEffect(() => {
-    // Считаем в микрозадаче — к этому моменту дети уже смонтированы.
+    // Считаем в микрозадаче — к этому моменту дети уже смонтированы,
+    // а флаги видимости из аутлайнера применены.
     const id = setTimeout(() => setStats(countScene(scene)), 0)
     return () => clearTimeout(id)
-  }, [deps, scene, setStats])
+  }, [deps, hidden, scene, setStats])
 
   useFrame((_, delta) => {
     acc.current.time += delta
@@ -209,6 +213,8 @@ function Tower() {
   const selected = useViewport((s) => s.selected)
   const select = useViewport((s) => s.select)
   const mode = useViewport((s) => s.mode)
+  const hidden = useViewport((s) => s.hidden)
+  const locked = useViewport((s) => s.locked)
   const pal = usePalette()
 
   const skin = useMemo(() => buildSkin(params), [params])
@@ -259,10 +265,14 @@ function Tower() {
   useEffect(() => () => void skinEdges.dispose(), [skinEdges])
   useEffect(() => () => void ringLines.dispose(), [ringLines])
 
-  const pick = (part: PartId) => (e: ThreeEvent<MouseEvent>) => {
-    e.stopPropagation()
-    select(part)
-  }
+  // Заблокированной части просто не даём обработчика — она перестаёт выделяться.
+  const pick = (part: PartId) =>
+    locked[part]
+      ? undefined
+      : (e: ThreeEvent<MouseEvent>) => {
+          e.stopPropagation()
+          select(part)
+        }
 
   const r = params.radius * MM
   const h = towerHeight(params)
@@ -272,7 +282,7 @@ function Tower() {
   return (
     <group>
       {/* ядро жёсткости */}
-      <mesh position={[0, h / 2, 0]} onClick={pick('core')}>
+      <mesh position={[0, h / 2, 0]} visible={!hidden.core} onClick={pick('core')}>
         <cylinderGeometry args={[r * 0.34, r * 0.34, h, params.sides]} />
         <SurfaceMaterial tone="alt" active={selected === 'core'} />
       </mesh>
@@ -282,6 +292,7 @@ function Tower() {
         key={`slabs-${slabMatrices.length}-${params.sides}`}
         ref={slabsRef}
         args={[undefined, undefined, slabMatrices.length]}
+        visible={!hidden.slabs}
         onClick={pick('slabs')}
       >
         <cylinderGeometry args={[r, r, 1, params.sides]} />
@@ -293,6 +304,7 @@ function Tower() {
         key={`ribs-${ribMatrices.length}`}
         ref={ribsRef}
         args={[undefined, undefined, ribMatrices.length]}
+        visible={!hidden.diagrid}
         onClick={pick('diagrid')}
       >
         <boxGeometry args={[params.ribSize * MM, 1, params.ribSize * MM]} />
@@ -300,16 +312,17 @@ function Tower() {
       </instancedMesh>
 
       {/* витраж */}
-      <mesh geometry={skin} onClick={pick('glass')}>
+      <mesh geometry={skin} visible={!hidden.glass} onClick={pick('glass')}>
         <SurfaceMaterial tone="glass" active={selected === 'glass'} />
       </mesh>
 
+      {/* Контуры принадлежат своим частям и гаснут вместе с ними. */}
       {showEdges ? (
         <>
-          <lineSegments geometry={skinEdges}>
+          <lineSegments geometry={skinEdges} visible={!hidden.glass}>
             <lineBasicMaterial color={pal.edge} transparent opacity={0.5} />
           </lineSegments>
-          <lineSegments geometry={ringLines}>
+          <lineSegments geometry={ringLines} visible={!hidden.slabs}>
             <lineBasicMaterial color={pal.edge} transparent opacity={0.35} />
           </lineSegments>
         </>
@@ -349,6 +362,7 @@ export function Scene() {
 
       {grid ? (
         <Grid
+          name="helper:grid"
           args={[10, 10]}
           cellSize={1}
           cellThickness={0.6}
