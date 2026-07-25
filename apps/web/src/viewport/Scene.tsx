@@ -39,31 +39,47 @@ function usePalette() {
 
 type Tone = 'base' | 'alt' | 'glass'
 
-/** Материал зависит от режима отображения — тот же набор, что в Rhino/SketchUp. */
+/**
+ * Материал зависит от режима отображения — тот же набор, что в Rhino/SketchUp.
+ *
+ * Свойства перечисляем ПОЛНОСТЬЮ в каждом режиме и вешаем key: r3f применяет
+ * только то, что указано в JSX, и не возвращает опущенное к значению по
+ * умолчанию. Иначе depthWrite от x-ray и flatShading от clay протекали бы в
+ * shaded и ломали картинку при переключении.
+ */
 function SurfaceMaterial({ tone, active }: { tone: Tone; active: boolean }) {
   const mode = useViewport((s) => s.mode)
   const pal = usePalette()
   const isGlass = tone === 'glass'
 
   if (mode === 'wire') {
-    return <meshBasicMaterial color={pal.edge} wireframe side={THREE.DoubleSide} />
+    return <meshBasicMaterial key="wire" color={pal.edge} wireframe side={THREE.DoubleSide} />
   }
+
   if (mode === 'xray') {
     return (
       <meshStandardMaterial
+        key="xray"
         color={active ? pal.edge : pal[tone]}
         transparent
         opacity={active ? 0.3 : 0.12}
         depthWrite={false}
+        flatShading={false}
         roughness={1}
+        metalness={0}
         side={THREE.DoubleSide}
       />
     )
   }
+
   if (mode === 'clay') {
     return (
       <meshStandardMaterial
+        key="clay"
         color={active ? pal.alt : pal.clay}
+        transparent={false}
+        opacity={1}
+        depthWrite
         flatShading
         roughness={1}
         metalness={0}
@@ -71,13 +87,17 @@ function SurfaceMaterial({ tone, active }: { tone: Tone; active: boolean }) {
       />
     )
   }
+
   return (
     <meshStandardMaterial
+      key="shaded"
       color={active ? pal.alt : pal[tone]}
-      roughness={0.9}
-      metalness={0}
       transparent={isGlass}
       opacity={isGlass ? 0.42 : 1}
+      depthWrite={!isGlass}
+      flatShading={false}
+      roughness={0.9}
+      metalness={0}
       side={THREE.DoubleSide}
     />
   )
@@ -99,7 +119,14 @@ const VIEW_DIR = new THREE.Vector3(1, 0.62, 1).normalize()
 function CameraRig({ height, radius }: { height: number; radius: number }) {
   const fitToken = useViewport((s) => s.fitToken)
   const projection = useViewport((s) => s.projection)
-  const { camera, controls, size, invalidate } = useThree()
+  const camera = useThree((s) => s.camera)
+  const controls = useThree((s) => s.controls)
+  const invalidate = useThree((s) => s.invalidate)
+  // Берём числа, а не объект size: его идентичность меняется при любой
+  // переконфигурации канваса, и вид сбрасывался бы прямо посреди вращения.
+  const width = useThree((s) => s.size.width)
+  const height0 = useThree((s) => s.size.height)
+  const size = useMemo(() => ({ width, height: height0 }), [width, height0])
 
   useEffect(() => {
     // Вписываем описанную сферу объекта, а не «примерно высоту»: иначе высокая
@@ -343,12 +370,8 @@ export function Scene() {
         просить кадр — без этого орбита крутится «вслепую»: камера уже повернулась,
         а на экране висит предыдущий кадр.
       */}
-      <OrbitControls
-        makeDefault
-        enableDamping={false}
-        onChange={() => invalidate()}
-        maxPolarAngle={Math.PI / 2 - 0.01}
-      />
+      {/* Углы не ограничиваем: модель нужно уметь посмотреть и снизу. */}
+      <OrbitControls makeDefault enableDamping={false} onChange={() => invalidate()} />
 
       {gizmo ? (
         <GizmoHelper alignment="bottom-right" margin={[56, 56]}>

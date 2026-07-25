@@ -63,11 +63,45 @@ export function ViewportToolbar() {
   )
 }
 
+/**
+ * Ссылки на настройки канваса держим стабильными. Литералы в пропсах заставляли
+ * r3f переконфигурировать канвас на каждый рендер — а вместе с этим пересоздавался
+ * объект size, и камера отскакивала в вид по умолчанию посреди вращения и зума.
+ */
+const GL_OPTIONS = { antialias: true, alpha: true }
+const DPR: [number, number] = [1, 2]
+const deselect = () => useViewport.getState().select(null)
+
+/**
+ * Счётчики вынесены в отдельный компонент: они обновляются несколько раз в
+ * секунду во время взаимодействия, и подписка на них в самом Viewport
+ * перерисовывала бы всё дерево канваса.
+ */
+function HudStats() {
+  const stats = useViewport((v) => v.stats)
+  const selected = useViewport((v) => v.selected)
+
+  return (
+    <div className={s.hudTL}>
+      <div className={s.hudRow}>
+        <Label>{t('hud.objects')}</Label>
+        <span className={s.hudValue}>{stats.objects}</span>
+      </div>
+      <div className={s.hudRow}>
+        <Label>{t('hud.tris')}</Label>
+        <span className={s.hudValue}>{stats.triangles.toLocaleString('ru-RU')}</span>
+      </div>
+      <div className={s.hudRow}>
+        <Label>{t('hud.selection')}</Label>
+        <span className={s.hudValue}>{selected ?? '—'}</span>
+      </div>
+    </div>
+  )
+}
+
 export function Viewport() {
   const mode = useViewport((v) => v.mode)
   const projection = useViewport((v) => v.projection)
-  const selected = useViewport((v) => v.selected)
-  const stats = useViewport((v) => v.stats)
   const params = useViewport((v) => v.params)
 
   const load = useLoadedModel((l) => l.load)
@@ -96,12 +130,7 @@ export function Viewport() {
       onDrop={onDrop}
     >
       <div className={s.canvas}>
-        <Canvas
-          frameloop="demand"
-          dpr={[1, 2]}
-          gl={{ antialias: true, alpha: true }}
-          onPointerMissed={() => useViewport.getState().select(null)}
-        >
+        <Canvas frameloop="demand" dpr={DPR} gl={GL_OPTIONS} onPointerMissed={deselect}>
           <Suspense fallback={null}>
             <Scene />
           </Suspense>
@@ -116,20 +145,7 @@ export function Viewport() {
       </div>
 
       <div className={s.hud}>
-        <div className={s.hudTL}>
-          <div className={s.hudRow}>
-            <Label>{t('hud.objects')}</Label>
-            <span className={s.hudValue}>{stats.objects}</span>
-          </div>
-          <div className={s.hudRow}>
-            <Label>{t('hud.tris')}</Label>
-            <span className={s.hudValue}>{stats.triangles.toLocaleString('ru-RU')}</span>
-          </div>
-          <div className={s.hudRow}>
-            <Label>{t('hud.selection')}</Label>
-            <span className={s.hudValue}>{selected ?? '—'}</span>
-          </div>
-        </div>
+        <HudStats />
 
         <div className={s.hudTR}>
           <Label tone="ink2">{mode}</Label>
