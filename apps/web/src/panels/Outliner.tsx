@@ -2,7 +2,8 @@ import { Eye, EyeOff, Lock, Unlock } from 'lucide-react'
 import { useMemo } from 'react'
 import { t } from '../i18n'
 import { useViewport, type PartId } from '../store/viewport'
-import { buildSceneTree, flatParts } from '../viewport/sceneTree'
+import { useModel } from '../store/model'
+import { buildSceneTree, flatParts, treeFromSnapshot } from '../viewport/sceneTree'
 import { IconButton, Label } from '../ui'
 import s from './panels.module.css'
 
@@ -20,7 +21,13 @@ export function Outliner() {
   const toggleLocked = useViewport((v) => v.toggleLocked)
   const select = useViewport((v) => v.select)
 
-  const tree = useMemo(() => buildSceneTree(params), [params])
+  // Есть снимок из движка — показываем его. Демо-башня остаётся для пустой
+  // сессии, чтобы панель не выглядела сломанной, пока движок не подключён.
+  const snapshot = useModel((m) => m.snapshot)
+  const tree = useMemo(
+    () => (snapshot ? treeFromSnapshot(snapshot) : buildSceneTree(params)),
+    [snapshot, params],
+  )
 
   // Считаем и видимое, и всё: иначе цифра в шапке расходится со счётчиком
   // вьюпорта, и непонятно, какая из них правильная.

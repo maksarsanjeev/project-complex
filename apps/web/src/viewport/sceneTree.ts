@@ -1,4 +1,4 @@
-import type { SceneNodeKind } from '@complex/protocol'
+import type { ModelSnapshot, SceneNodeKind } from '@complex/protocol'
 import type { PartFlags, PartId, TowerParams } from '../store/viewport'
 import { SLAB_THICKNESS } from './geometry'
 
@@ -42,6 +42,33 @@ export interface SceneLayer {
   /** Он же материал: бетон, железо, стекло. */
   material: string
   parts: ScenePart[]
+}
+
+/**
+ * То же дерево, но из настоящей модели движка.
+ *
+ * Форма узлов совпадает с демонстрационной ровно затем, чтобы панель
+ * аутлайнера не пришлось переписывать: меняется источник, а не механика.
+ *
+ * Габарит здесь не считаем: снимок его не приносит, а выдумывать нули хуже,
+ * чем честно показать прочерк в инспекторе.
+ */
+export function treeFromSnapshot(snapshot: ModelSnapshot | null): SceneLayer[] {
+  if (!snapshot) return []
+
+  const layers = snapshot.nodes.filter((n) => n.kind === 'layer')
+  return layers.map((layer) => ({
+    material: layer.name,
+    parts: snapshot.nodes
+      .filter((n) => n.parentId === layer.id)
+      .map((node) => ({
+        id: node.id,
+        name: node.name,
+        kind: node.kind,
+        triangles: node.triangles ?? 0,
+        size: [0, 0, 0] as const,
+      })),
+  }))
 }
 
 /** Треугольников в призме из `sides` граней: боковина плюс две крышки. */

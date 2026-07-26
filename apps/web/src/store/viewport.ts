@@ -3,7 +3,17 @@ import { persist } from 'zustand/middleware'
 
 export type DisplayMode = 'shaded' | 'wire' | 'clay' | 'xray'
 export type Projection = 'persp' | 'ortho'
-export type PartId = 'core' | 'slabs' | 'diagrid' | 'glass'
+/**
+ * Идентификатор части сцены.
+ *
+ * У демо-башни это четыре известных имени, у настоящей модели — идентификаторы
+ * узлов из движка (`ent:43523`, `layer:бетон`). Поэтому строка, а не
+ * перечисление: видимость и блокировка должны работать одинаково и там и там.
+ */
+export type PartId = string
+
+/** Имена частей демо-башни — они же значения PartId для неё. */
+export const DEMO_PARTS = ['core', 'slabs', 'diagrid', 'glass'] as const
 
 /**
  * Параметры демонстрационной модели — той самой башни с диагридом из фикстур.
