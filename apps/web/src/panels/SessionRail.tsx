@@ -3,8 +3,9 @@ import { Check, Pencil, Plus, RotateCcw, Search, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { t } from '../i18n'
 import { useSession } from '../store/session'
-import { IconButton, IdChip, Label, StatusMark, type MarkState } from '../ui'
+import { IconButton, IdChip, Label, Section, StatusMark, type MarkState } from '../ui'
 import { Outliner } from './Outliner'
+import { Definitions, Materials, Tags } from './SceneLists'
 import s from './panels.module.css'
 
 const MARK: Record<SessionStatus, MarkState> = {
@@ -233,8 +234,23 @@ export function SessionRail() {
         </div>
       </div>
 
+      {/*
+        Сцена целиком: дерево и всё, что к нему относится — теги, материалы,
+        компоненты. Раньше три списка жили в панели инструментов справа, и,
+        чтобы поправить материал увиденного в дереве объекта, приходилось идти
+        через весь экран. Части одной модели должны быть рядом.
+      */}
       <div className={s.railBottom}>
         <Outliner />
+        <Section title={t('tools.section.tags')} defaultOpen={false}>
+          <Tags />
+        </Section>
+        <Section title={t('tools.section.materials')} defaultOpen={false}>
+          <Materials />
+        </Section>
+        <Section title={t('tools.section.definitions')} defaultOpen={false}>
+          <Definitions />
+        </Section>
       </div>
     </div>
   )
