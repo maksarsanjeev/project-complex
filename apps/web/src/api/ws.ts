@@ -13,6 +13,7 @@ import type {
   Transport,
   WireRequest,
   WireResponse,
+  ModelSnapshot,
 } from '@complex/protocol'
 
 /**
@@ -191,6 +192,10 @@ export class WsTransport implements Transport {
 
   saveGraph(sessionId: string, doc: GraphDoc): Promise<void> {
     return this.call('saveGraph', { sessionId, doc })
+  }
+
+  pullModel(input?: { engine?: EngineId; instance?: string }): Promise<ModelSnapshot | null> {
+    return this.call('pullModel', input ?? {})
   }
 }
 

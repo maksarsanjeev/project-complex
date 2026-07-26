@@ -224,6 +224,41 @@ export interface SceneNode {
   triangles?: number
 }
 
+/**
+ * Снимок модели из движка: и геометрия, и структура за один запрос.
+ *
+ * Почему не файл экспорта. Экспорт дал бы только треугольники, а вьюпорту
+ * нужно ещё и дерево: слои по материалу, имена групп, кто чей родитель.
+ * Собирая снимок на стороне моста, получаем и то и другое разом, без временных
+ * файлов и без зависимости от доступных в этой редакции форматов экспорта.
+ */
+export interface ModelSnapshot {
+  engine: EngineId
+  /** Окно приложения, из которого снято. */
+  instance?: string
+  title: string
+  /** Всегда 'mm' — перевод делает мост. */
+  units: string
+  triangles: number
+  /** Модель оказалась больше предела: показано не всё. */
+  truncated: boolean
+  /** Дерево для аутлайнера. */
+  nodes: SceneNode[]
+  parts: MeshPart[]
+  /** Когда снято — вьюпорт показывает свежесть. */
+  takenAt: Timestamp
+}
+
+/** Треугольники одного узла дерева. Координаты в миллиметрах, тройками. */
+export interface MeshPart {
+  /** Узел дерева, которому принадлежит геометрия. */
+  nodeId: string
+  layer: string
+  triangles: number
+  positions: number[]
+  normals: number[]
+}
+
 /* ────────────────────────────── нодовый граф ────────────────────────────── */
 
 export type NodeKind =
@@ -443,6 +478,11 @@ export interface Transport {
   listEngines(): Promise<EngineDescriptor[]>
   listProviders(): Promise<ModelProvider[]>
   searchKnowledge(query: string): Promise<KnowledgeHit[]>
+  /**
+   * Забрать модель из движка: геометрию и дерево. Возвращает null, когда
+   * движок не запущен — это обычное положение дел, а не ошибка.
+   */
+  pullModel(input?: { engine?: EngineId; instance?: string }): Promise<ModelSnapshot | null>
 
   saveGraph(sessionId: string, doc: GraphDoc): Promise<void>
 }

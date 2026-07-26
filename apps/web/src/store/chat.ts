@@ -1,6 +1,7 @@
 import type { ChatMessage, ProviderTransport } from '@complex/protocol'
 import { create } from 'zustand'
 import { transport } from '../api/transport'
+import { useModel } from './model'
 import { useSession } from './session'
 
 interface ChatState {
@@ -60,6 +61,12 @@ export const useChat = create<ChatState>()((set, get) => ({
       })
     } finally {
       set({ sending: false })
+      // Модель закончила ход — подтягиваем геометрию из движка. Именно здесь,
+      // а не по таймеру: сборка меша идёт на главном потоке SketchUp, и опрос
+      // по расписанию дёргал бы его интерфейс даже когда ничего не менялось.
+      // Ошибку глотаем намеренно: движок мог закрыться посреди разговора, и
+      // ронять из-за этого ответ модели незачем — он уже получен.
+      void useModel.getState().pull().catch(() => {})
     }
   },
 

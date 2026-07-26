@@ -1200,7 +1200,136 @@ module SU_MCP
     result
   end
 
+  # ---------------------------------------------------------------------------
+  # Снимок модели: геометрия и структура для веб-вьюпорта
+  #
+  # Почему свои треугольники, а не экспорт в файл. Экспорт дал бы только
+  # геометрию, а вьюпорту нужна ещё и структура: слои по материалу, имена
+  # групп, к какому узлу относится каждая поверхность. Собирая меш самим,
+  # получаем и то и другое за один проход, без временных файлов и без
+  # зависимости от того, какие форматы экспорта доступны в этой редакции.
+  #
+  # Всё наружу в миллиметрах, как и везде.
+  # ---------------------------------------------------------------------------
+
+  # Предохранитель: рабочие файлы бывают на миллионы треугольников, а браузеру
+  # столько не нужно и не поднять. Обрезку не скрываем — она попадает в ответ.
+  MESH_TRIANGLE_LIMIT = 300_000
+
+  def self.handle_model_mesh(p)
+    limit = (p['limit'] || MESH_TRIANGLE_LIMIT).to_i
+    state = { parts: [], nodes: {}, triangles: 0, truncated: false, limit: limit }
+
+    collect_entities(model.entities, Geom::Transformation.new, nil, nil, state)
+
+    {
+      title:     model.title.to_s.empty? ? 'Untitled' : model.title,
+      units:     'mm',
+      triangles: state[:triangles],
+      truncated: state[:truncated],
+      nodes:     state[:nodes].values,
+      parts:     state[:parts]
+    }
+  end
+
+  # Узел дерева: слой или группа. Слои создаются по требованию, чтобы в дереве
+  # не оказалось пустых веток от слоёв, на которых ничего нет.
+  def self.ensure_layer_node(name, state)
+    id = "layer:#{name}"
+    state[:nodes][id] ||= {
+      id: id, name: name, kind: 'layer', parentId: nil,
+      visible: (model.layers[name] ? model.layers[name].visible? : true),
+      locked: false, material: name, triangles: 0
+    }
+    id
+  end
+
+  def self.bump_triangles(node_id, count, state)
+    while node_id
+      node = state[:nodes][node_id]
+      break unless node
+      node[:triangles] += count
+      node_id = node[:parentId]
+    end
+  end
+
+  # Обход в глубину с накоплением преобразования: вложенные группы приходят со
+  # своими системами координат, и без перемножения матриц геометрия разъезжается.
+  def self.collect_entities(entities, transform, parent_id, parent_layer, state)
+    loose = {}
+
+    entities.each do |e|
+      break if state[:truncated]
+
+      case e
+      when Sketchup::Group, Sketchup::ComponentInstance
+        is_group = e.is_a?(Sketchup::Group)
+        name = is_group ? (e.name.to_s.empty? ? 'Группа' : e.name) : e.definition.name
+        layer_id = ensure_layer_node(e.layer.name, state)
+        node_id = "ent:#{e.entityID}"
+        state[:nodes][node_id] = {
+          id: node_id, name: name, kind: is_group ? 'group' : 'block',
+          parentId: parent_id || layer_id,
+          visible: e.visible? && e.layer.visible?,
+          locked: (e.locked? rescue false),
+          triangles: 0
+        }
+        inner = is_group ? e.entities : e.definition.entities
+        collect_entities(inner, transform * e.transformation, node_id, e.layer.name, state)
+
+      when Sketchup::Face
+        # Слой берём у ГРУППЫ, а не у грани: внутри группы грани обычно остаются
+        # на Layer0, а материал задан самой группе. Иначе «Пирамида» на слое
+        # «камень» отрапортовала бы про Layer0, и раскраска по материалу соврала бы.
+        layer_name = parent_layer || e.layer.name
+        node_id = parent_id || ensure_layer_node(layer_name, state)
+        loose[node_id] ||= { positions: [], normals: [], layer: layer_name, count: 0 }
+        add_face(e, transform, loose[node_id], state)
+      end
+    end
+
+    loose.each do |node_id, bucket|
+      next if bucket[:count].zero?
+      state[:parts] << {
+        nodeId:    node_id,
+        layer:     bucket[:layer],
+        triangles: bucket[:count],
+        positions: bucket[:positions],
+        normals:   bucket[:normals]
+      }
+      bump_triangles(node_id, bucket[:count], state)
+    end
+  end
+
+  def self.add_face(face, transform, bucket, state)
+    # Флаг 4 просит вернуть нормали вместе с точками: считать их самим по
+    # треугольникам можно, но у сглаженных поверхностей результат вышел бы
+    # гранёным, а SketchUp знает про сглаживание.
+    mesh = face.mesh(4)
+    mesh.polygons.each do |poly|
+      if state[:triangles] >= state[:limit]
+        state[:truncated] = true
+        return
+      end
+      # Индексы приходят с единицы, отрицательные помечают скрытые рёбра.
+      idx = poly.map { |i| i.abs }
+      next unless idx.length == 3
+      idx.each do |i|
+        pt = mesh.point_at(i).transform(transform)
+        # Округляем: снимок уходит по сети целиком, и лишние знаки после
+        # запятой — это мегабайты на ровном месте. Сотая миллиметра для
+        # показа во вьюпорте избыточна уже сама по себе.
+        bucket[:positions].push((to_mm(pt.x)).round(2), (to_mm(pt.y)).round(2), (to_mm(pt.z)).round(2))
+        n = mesh.normal_at(i).transform(transform)
+        bucket[:normals].push(n.x.to_f.round(4), n.y.to_f.round(4), n.z.to_f.round(4))
+      end
+      bucket[:count] += 1
+      state[:triangles] += 1
+    end
+  end
+
   ROUTES = {
+    ['GET',  '/model/mesh']              => :handle_model_mesh,
     ['GET',  '/instance/info']           => :handle_instance_info,
     ['POST', '/view/screenshot']         => :handle_viewport_screenshot,
     ['POST', '/operations/boolean']      => :handle_boolean_operation,

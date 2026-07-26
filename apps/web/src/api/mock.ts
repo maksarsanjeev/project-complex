@@ -338,6 +338,16 @@ export class MockTransport implements Transport {
     return fx.providers.map((p) => ({ ...p }))
   }
 
+  /**
+   * У мока движков нет по определению — он существует, чтобы править интерфейс
+   * без запущенного сервера. Пустой снимок здесь честнее выдуманного: иначе
+   * вьюпорт показывал бы геометрию, которой нигде не существует.
+   */
+  async pullModel(): Promise<null> {
+    await sleep(120)
+    return null
+  }
+
   async searchKnowledge(query: string): Promise<KnowledgeHit[]> {
     await sleep(200)
     const q = query.trim().toLowerCase()

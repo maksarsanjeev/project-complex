@@ -8,6 +8,7 @@ import type {
   JobEvent,
   JobSpec,
   KnowledgeHit,
+  ModelSnapshot,
   ModelProvider,
 } from '@complex/protocol'
 import * as agents from './agents.ts'
@@ -136,6 +137,28 @@ export const methods: Record<string, Method> = {
       capabilities: ['text', 'vision', 'tools', 'long-context'],
     },
   ],
+
+  /**
+   * Снимок модели из движка для вьюпорта.
+   *
+   * Движок не запущен — возвращаем null, а не бросаем ошибку: это обычное
+   * состояние, и веб-морда должна просто показать пустую сцену, а не ругаться
+   * красным на каждой загрузке страницы.
+   */
+  pullModel: async (p): Promise<ModelSnapshot | null> => {
+    const engine = (s(p.engine) || 'sketchup') as EngineId
+    if (!agents.isOnline(engine)) return null
+
+    const instance = s(p.instance) || undefined
+    const raw = (await agents.invoke({
+      engine,
+      instance,
+      command: 'GET /model/mesh',
+      params: {},
+    })) as Omit<ModelSnapshot, 'engine' | 'instance' | 'takenAt'>
+
+    return { ...raw, engine, instance, takenAt: nowIso() }
+  },
 
   /** База знаний — отдельный этап; пока честно отдаём пустоту. */
   searchKnowledge: (): KnowledgeHit[] => [],

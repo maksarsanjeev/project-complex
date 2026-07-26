@@ -140,6 +140,10 @@ export const ru = {
   'engine.version': 'версия',
   'engine.lastSeen': 'связь',
   'engine.bind': 'привязать',
+  'engine.pull': 'забрать модель',
+  'engine.pull.loading': 'забираю…',
+  'engine.pull.hint': 'подтянуть геометрию и слои из движка',
+  'engine.pull.offline': 'движок не запущен',
   'engine.bound': 'привязан',
 
   'export.format': 'формат',

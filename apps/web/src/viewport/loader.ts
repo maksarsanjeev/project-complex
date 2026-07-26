@@ -55,6 +55,14 @@ interface LoadedState {
   loading: boolean
   error: string | null
   load: (file: File) => Promise<void>
+  /**
+   * Подставить готовый объект — им пользуется снимок модели из движка.
+   * Нормализация тут НЕ применяется: у геометрии из движка настоящие
+   * миллиметры, и подгонять её под условный размер значило бы соврать
+   * о масштабе. Файл, перетащенный в холст, — другое дело, там единицы
+   * неизвестны, и вписать его в кадр полезно.
+   */
+  setObject: (object: THREE.Object3D, name: string) => void
   clear: () => void
 }
 
@@ -77,6 +85,11 @@ export const useLoadedModel = create<LoadedState>()((set, get) => ({
         error: error instanceof Error ? error.message : 'не удалось прочитать файл',
       })
     }
+  },
+
+  setObject(object, name) {
+    get().object?.traverse(disposeNode)
+    set({ object, name, loading: false, error: null })
   },
 
   clear() {

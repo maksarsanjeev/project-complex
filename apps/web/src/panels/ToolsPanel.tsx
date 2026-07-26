@@ -19,6 +19,7 @@ import { t } from '../i18n'
 import { NODE_KINDS } from '../nodes/catalog'
 import { useEngines } from '../store/engine'
 import { useLayout } from '../store/layout'
+import { useModel } from '../store/model'
 import { useSession } from '../store/session'
 import { useViewport } from '../store/viewport'
 import { IdChip, Label, NumField, Section, StatusMark, type MarkState } from '../ui'
@@ -239,7 +240,48 @@ function Engines() {
           </span>
         </button>
       ))}
+      <PullModel />
     </div>
+  )
+}
+
+/**
+ * Забрать модель из движка вручную.
+ *
+ * Само это происходит после каждого ответа модели, но человек ещё и правит
+ * файл руками в SketchUp — и вот тогда нужна кнопка. Опрашивать движок по
+ * таймеру было бы проще, но сборка меша идёт на его главном потоке, и на
+ * тяжёлой сцене это дёргало бы интерфейс самого SketchUp без всякой причины.
+ */
+function PullModel() {
+  const bound = useEngines((e) => e.boundEngine)
+  const engines = useEngines((e) => e.engines)
+  const pull = useModel((m) => m.pull)
+  const loading = useModel((m) => m.loading)
+  const snapshot = useModel((m) => m.snapshot)
+  const error = useModel((m) => m.error)
+
+  const online = engines.some((e) => e.id === bound && e.status === 'online')
+
+  return (
+    <>
+      <button
+        type="button"
+        className={s.pull}
+        disabled={loading || !online}
+        onClick={() => void pull(bound)}
+        title={online ? t('engine.pull.hint') : t('engine.pull.offline')}
+      >
+        {loading ? t('engine.pull.loading') : t('engine.pull')}
+      </button>
+      {error ? <Label tone="muted">{error}</Label> : null}
+      {snapshot ? (
+        <Label tone="muted">
+          {snapshot.title} · {snapshot.triangles.toLocaleString('ru')} тр
+          {snapshot.truncated ? ' · показано не всё' : ''}
+        </Label>
+      ) : null}
+    </>
   )
 }
 
@@ -356,6 +398,13 @@ function Knowledge() {
 
 export function ToolsPanel() {
   const tab = useLayout((l) => l.tab)
+  const bound = useEngines((e) => e.boundEngine)
+
+  // Параметрическая модель имеет смысл только там, где движок умеет
+  // параметрику: Rhino с Grasshopper и Blender с его модификаторами. В
+  // SketchUp такого нет вовсе, и показывать поля, которые не на что положить,
+  // значит обещать несуществующее.
+  const parametric = bound !== 'sketchup'
 
   return (
     <div className={s.tools}>
@@ -372,7 +421,7 @@ export function ToolsPanel() {
           {tab === 'nodes' ? <NodeInspector /> : <PartInspector />}
         </Section>
 
-        {tab === 'viewport' ? (
+        {tab === 'viewport' && parametric ? (
           <Section title={t('tools.section.model')}>
             <ModelParams />
           </Section>

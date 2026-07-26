@@ -134,6 +134,10 @@ export const en: Record<I18nKey, string> = {
   'engine.version': 'version',
   'engine.lastSeen': 'last seen',
   'engine.bind': 'bind',
+  'engine.pull': 'pull model',
+  'engine.pull.loading': 'pulling…',
+  'engine.pull.hint': 'fetch geometry and layers from the engine',
+  'engine.pull.offline': 'engine is not running',
   'engine.bound': 'bound',
 
   'export.format': 'format',
