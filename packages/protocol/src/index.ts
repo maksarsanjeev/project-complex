@@ -249,6 +249,22 @@ export interface ModelSnapshot {
   takenAt: Timestamp
 }
 
+/**
+ * Что пользователь выделил в интерфейсе на момент отправки сообщения.
+ *
+ * Без этого «измени выделенный объект» для модели пустой звук: выделение
+ * живёт в браузере и до сервера не доходит. Идентификатор узла вида
+ * `ent:43725` несёт в себе настоящий entityID движка — тот самый, который уже
+ * принимают инструменты правки, так что модели остаётся только его взять.
+ */
+export interface SelectionRef {
+  /** Идентификатор узла дерева: `ent:43725` или `layer:бетон`. */
+  id: string
+  name: string
+  layer?: string
+  kind?: SceneNodeKind
+}
+
 /** Треугольники одного узла дерева. Координаты в миллиметрах, тройками. */
 export interface MeshPart {
   /** Узел дерева, которому принадлежит геометрия. */
@@ -471,6 +487,8 @@ export interface Transport {
     text: string
     attachments?: ChatAttachment[]
     modelId: string
+    /** Что выделено во вьюпорте — чтобы «измени выделенный» имел смысл. */
+    selection?: SelectionRef
   }): AsyncIterable<ChatEvent>
 
   runJob(spec: JobSpec): AsyncIterable<JobEvent>

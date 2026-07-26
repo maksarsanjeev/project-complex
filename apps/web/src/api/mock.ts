@@ -10,6 +10,7 @@ import type {
   JobSpec,
   KnowledgeHit,
   ModelProvider,
+  SelectionRef,
   Session,
   SessionState,
   Transport,
@@ -235,6 +236,7 @@ export class MockTransport implements Transport {
     text: string
     attachments?: ChatAttachment[]
     modelId: string
+    selection?: SelectionRef
   }): AsyncIterable<ChatEvent> {
     const provider = fx.providers.find((p) => p.id === input.modelId)
     const session = this.find(input.sessionId)

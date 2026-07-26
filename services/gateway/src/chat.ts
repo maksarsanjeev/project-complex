@@ -1,4 +1,10 @@
-import type { ChatEvent, ChatMessage, ModelProvider, ToolCall } from '@complex/protocol'
+import type {
+  ChatEvent,
+  ChatMessage,
+  ModelProvider,
+  SelectionRef,
+  ToolCall,
+} from '@complex/protocol'
 import { config } from './config.ts'
 import { newId, nowIso } from './db/db.ts'
 import { appendMessage, listMessages } from './db/repo.ts'
@@ -95,6 +101,7 @@ export async function* streamAnswer(input: {
   sessionId: string
   text: string
   provider?: ModelProvider
+  selection?: SelectionRef
 }): AsyncGenerator<ChatEvent> {
   const messageId = newId('m')
   const model = input.provider?.model || config.defaultModel
@@ -131,7 +138,12 @@ export async function* streamAnswer(input: {
 
   const tools = availableTools()
   const conversation: WireMessage[] = [
-    { role: 'system', content: `${SYSTEM_PROMPT}\n\n${engineSummary()}` },
+    {
+      role: 'system',
+      content: [SYSTEM_PROMPT, engineSummary(), describeSelection(input.selection)]
+        .filter(Boolean)
+        .join('\n\n'),
+    },
     ...buildHistory(input.sessionId),
   ]
 
@@ -209,6 +221,29 @@ export async function* streamAnswer(input: {
   // осталось бы и следа.
   appendMessage(input.sessionId, { ...message, content: text, streaming: false, toolCalls })
   yield { type: 'message-end', messageId }
+}
+
+/**
+ * Что выделено во вьюпорте — словами, которые модель может использовать.
+ *
+ * Ключевая подробность: идентификатор узла вида `ent:43725` несёт в себе
+ * настоящий entityID SketchUp. Это ровно то число, которое принимают
+ * su_push_pull, su_move, su_boolean и остальные инструменты правки, поэтому
+ * его и называем прямо — иначе модель пошла бы искать объект списком.
+ */
+function describeSelection(selection?: SelectionRef): string {
+  if (!selection) return ''
+
+  const entity = selection.id.startsWith('ent:') ? selection.id.slice(4) : null
+  const layer = selection.layer ? `, слой «${selection.layer}»` : ''
+
+  return (
+    `Пользователь выделил в интерфейсе: «${selection.name}»${layer}. ` +
+    (entity
+      ? `Его entity_id в SketchUp — ${entity}; используй именно это число в инструментах правки. `
+      : '') +
+    'Если он говорит «этот объект», «выделенное» и тому подобное — речь про него.'
+  )
 }
 
 /**

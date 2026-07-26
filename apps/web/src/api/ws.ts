@@ -14,6 +14,7 @@ import type {
   WireRequest,
   WireResponse,
   ModelSnapshot,
+  SelectionRef,
 } from '@complex/protocol'
 
 /**
@@ -170,6 +171,7 @@ export class WsTransport implements Transport {
     text: string
     attachments?: ChatAttachment[]
     modelId: string
+    selection?: SelectionRef
   }): AsyncIterable<ChatEvent> {
     return this.stream<ChatEvent>('sendMessage', input)
   }

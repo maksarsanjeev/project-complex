@@ -10,6 +10,7 @@ import type {
   KnowledgeHit,
   ModelSnapshot,
   ModelProvider,
+  SelectionRef,
 } from '@complex/protocol'
 import * as agents from './agents.ts'
 import { streamAnswer } from './chat.ts'
@@ -181,8 +182,9 @@ export const streamMethods: Record<string, StreamMethod> = {
 
     const providers = methods.listProviders({}) as ModelProvider[]
     const provider = providers.find((x) => x.id === s(p.modelId))
+    const selection = (p.selection as SelectionRef | undefined) ?? undefined
 
-    for await (const event of streamAnswer({ sessionId, text, provider })) {
+    for await (const event of streamAnswer({ sessionId, text, provider, selection })) {
       yield event satisfies ChatEvent
     }
   },

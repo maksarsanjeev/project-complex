@@ -1,7 +1,8 @@
-import type { ChatMessage, ProviderTransport } from '@complex/protocol'
+import type { ChatMessage, ProviderTransport, SelectionRef } from '@complex/protocol'
 import { create } from 'zustand'
 import { transport } from '../api/transport'
 import { useModel } from './model'
+import { useViewport } from './viewport'
 import { useSession } from './session'
 
 interface ChatState {
@@ -50,6 +51,7 @@ export const useChat = create<ChatState>()((set, get) => ({
         sessionId,
         text,
         modelId: get().modelId,
+        selection: currentSelection(),
       })) {
         if (cancelled) break
         useSession.getState().applyChatEvent(event)
@@ -75,3 +77,28 @@ export const useChat = create<ChatState>()((set, get) => ({
     set({ sending: false })
   },
 }))
+
+/**
+ * Что выделено во вьюпорте — уходит вместе с сообщением.
+ *
+ * Без этого фраза «измени выделенный объект» не значит для модели ничего:
+ * выделение живёт в браузере и до сервера не доходило. Ищем в том же дереве,
+ * что показывает аутлайнер, — тогда имя и слой совпадают с тем, что человек
+ * видит на экране.
+ */
+function currentSelection(): SelectionRef | undefined {
+  const id = useViewport.getState().selected
+  if (!id) return undefined
+
+  const snapshot = useModel.getState().snapshot
+  const node = snapshot?.nodes.find((n) => n.id === id)
+  if (!node) return undefined
+
+  const parent = snapshot?.nodes.find((n) => n.id === node.parentId)
+  return {
+    id: node.id,
+    name: node.name,
+    kind: node.kind,
+    layer: node.kind === 'layer' ? node.name : parent?.name,
+  }
+}
