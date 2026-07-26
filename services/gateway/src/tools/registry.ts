@@ -58,15 +58,54 @@ export function availableTools(): ToolDef[] {
   return ALL.filter((tool) => usable.has(tool.engine))
 }
 
+/**
+ * Превращает описания в то, что уходит модели, и по дороге дописывает выбор
+ * окна там, где он нужен.
+ *
+ * Почему это здесь, а не в схемах инструментов. Окно выбирается только у
+ * SketchUp и только когда их открыто несколько — а это состояние времени
+ * выполнения, схемы про него ничего не знают. Прописывать `instance` в каждый
+ * из двенадцати инструментов руками значило бы двенадцать раз повторить одно
+ * и то же и один раз забыть.
+ *
+ * Пока окно единственное, параметра нет вовсе: лишнее поле в схеме — это
+ * лишний повод модели заполнить его выдумкой.
+ */
 export function toWireTools(tools: ToolDef[]): WireTool[] {
-  return tools.map((tool) => ({
-    type: 'function',
-    function: {
-      name: tool.name,
-      description: tool.description,
-      parameters: tool.parameters,
-    },
-  }))
+  const windows = onlineEngines().find((e) => e.id === 'sketchup')?.instances ?? []
+  const needsChoice = windows.length > 1
+
+  return tools.map((tool) => {
+    if (tool.engine !== 'sketchup' || !needsChoice) {
+      return {
+        type: 'function',
+        function: { name: tool.name, description: tool.description, parameters: tool.parameters },
+      }
+    }
+
+    const names = windows.map((w) => `«${w.title}»`).join(', ')
+    return {
+      type: 'function',
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: {
+          ...tool.parameters,
+          properties: {
+            ...tool.parameters.properties,
+            instance: {
+              type: 'string',
+              description:
+                `Окно SketchUp, в котором работать. Открыты: ${names}. ` +
+                'Указывай имя окна. Если пользователь не сказал, в каком окне работать, ' +
+                'спроси у него, а не выбирай сам.',
+            },
+          },
+          required: [...(tool.parameters.required ?? []), 'instance'],
+        },
+      },
+    }
+  })
 }
 
 /**
