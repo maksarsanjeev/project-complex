@@ -236,7 +236,7 @@ export class MockTransport implements Transport {
     text: string
     attachments?: ChatAttachment[]
     modelId: string
-    selection?: SelectionRef
+    selection?: SelectionRef[]
   }): AsyncIterable<ChatEvent> {
     const provider = fx.providers.find((p) => p.id === input.modelId)
     const session = this.find(input.sessionId)
@@ -348,6 +348,11 @@ export class MockTransport implements Transport {
   async pullModel(): Promise<null> {
     await sleep(120)
     return null
+  }
+
+  /** У мока движка нет — отражать выделение некуда. */
+  async setSelection(): Promise<void> {
+    await sleep(30)
   }
 
   async searchKnowledge(query: string): Promise<KnowledgeHit[]> {

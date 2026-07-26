@@ -32,6 +32,7 @@ export const ru = {
 
   'outliner.visibility': 'видимость',
   'outliner.lock': 'блокировка',
+  'outliner.selectLayer': 'выделить весь слой',
   'outliner.polygons': 'полигонов',
   'outliner.hiddenOf': 'из',
   'outliner.lockedHint': 'часть заблокирована',
@@ -123,6 +124,7 @@ export const ru = {
   'tools.transform': 'трансформ',
 
   'inspect.empty': 'ничего не выделено',
+  'inspect.selectedCount': 'выделено частей',
   'inspect.emptyNode': 'узел не выбран',
   'inspect.node': 'узел',
   'inspect.part': 'часть модели',

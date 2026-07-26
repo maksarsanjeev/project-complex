@@ -31,6 +31,7 @@ export const en: Record<I18nKey, string> = {
 
   'outliner.visibility': 'visibility',
   'outliner.lock': 'lock',
+  'outliner.selectLayer': 'select whole layer',
   'outliner.polygons': 'polygons',
   'outliner.hiddenOf': 'of',
   'outliner.lockedHint': 'part is locked',
@@ -117,6 +118,7 @@ export const en: Record<I18nKey, string> = {
   'tools.transform': 'transform',
 
   'inspect.empty': 'nothing selected',
+  'inspect.selectedCount': 'parts selected',
   'inspect.emptyNode': 'no node selected',
   'inspect.node': 'node',
   'inspect.part': 'model part',

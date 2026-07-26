@@ -216,6 +216,65 @@ export const SKETCHUP_TOOLS: ToolDef[] = [
     },
   },
   {
+    name: 'su_delete',
+    engine: 'sketchup',
+    command: 'POST /model/delete',
+    description:
+      'Удаляет объекты по идентификаторам. Возвращает список удалённого и — что важнее — ' +
+      'список тех, кто после удаления всё ещё находится в модели: если он не пуст, удаление не удалось.',
+    parameters: {
+      type: 'object',
+      properties: {
+        entity_ids: {
+          type: 'array',
+          description: 'Числовые id объектов',
+          items: { type: 'integer' },
+        },
+      },
+      required: ['entity_ids'],
+    },
+  },
+  {
+    name: 'su_undo',
+    engine: 'sketchup',
+    command: 'POST /model/undo',
+    description:
+      'Отменяет последнюю операцию в SketchUp — ровно одну. Каждый вызов инструмента правки ' +
+      'создаёт одну операцию, поэтому одна отмена откатывает один твой шаг.\n' +
+      'ВНИМАНИЕ: отмена возвращает объект, но НЕ гарантирует, что он встанет ровно туда, где был, ' +
+      'если между делом были другие правки. Всегда перечитывай результат и сверяй с ожиданием, ' +
+      'а не докладывай об успехе по факту вызова.',
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'su_get_selection',
+    engine: 'sketchup',
+    command: 'GET /model/selection',
+    description:
+      'Что выделено в самом SketchUp сейчас. Выделение из веб-морды приходит отдельно, ' +
+      'в описании задачи, — этот инструмент нужен, когда человек выделял мышью в приложении.',
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'su_set_selection',
+    engine: 'sketchup',
+    command: 'POST /model/selection',
+    description:
+      'Выделяет объекты в SketchUp — чтобы человек увидел на экране приложения то, о чём идёт речь. ' +
+      'Полезно, когда объектов много и нужно показать, какие именно ты имеешь в виду.',
+    parameters: {
+      type: 'object',
+      properties: {
+        entity_ids: {
+          type: 'array',
+          description: 'Числовые id объектов; пустой список снимает выделение',
+          items: { type: 'integer' },
+        },
+      },
+      required: ['entity_ids'],
+    },
+  },
+  {
     name: 'su_run_ruby',
     engine: 'sketchup',
     command: 'POST /ruby/execute',

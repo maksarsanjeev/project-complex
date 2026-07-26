@@ -20,6 +20,7 @@ export function Outliner() {
   const toggleHidden = useViewport((v) => v.toggleHidden)
   const toggleLocked = useViewport((v) => v.toggleLocked)
   const select = useViewport((v) => v.select)
+  const selectMany = useViewport((v) => v.selectMany)
 
   // Есть снимок из движка — показываем его. Демо-башня остаётся для пустой
   // сессии, чтобы панель не выглядела сломанной, пока движок не подключён.
@@ -80,9 +81,16 @@ export function Outliner() {
                 data-visible={layerHidden ? 'false' : 'true'}
               >
                 <span className={s.nodeIndent} style={{ width: 8 }} />
-                <span className={s.nodeName} title={layer.material}>
+                {/* Клик по слою выделяет всё, что в нём: с материалом обычно
+                    работают целиком, а не по одной детали. */}
+                <button
+                  type="button"
+                  className={s.nodeName}
+                  title={t('outliner.selectLayer')}
+                  onClick={() => selectMany(ids.filter((id) => !locked[id]))}
+                >
                   {layer.material}
-                </span>
+                </button>
                 <span className={s.nodeTris}>{layerTris.toLocaleString('ru-RU')}</span>
                 <span className={s.nodeBtns}>
                   <IconButton
@@ -105,7 +113,7 @@ export function Outliner() {
                   key={part.id}
                   className={s.node}
                   data-visible={hidden[part.id] ? 'false' : 'true'}
-                  data-selected={selected === part.id || undefined}
+                  data-selected={selected.includes(part.id) || undefined}
                 >
                   <span className={s.nodeIndent} style={{ width: 22 }} />
                   {/* Заблокированную часть нельзя выделить и отсюда, а не только в сцене. */}
@@ -114,7 +122,7 @@ export function Outliner() {
                     className={s.nodeName}
                     title={locked[part.id] ? t('outliner.lockedHint') : part.name}
                     disabled={locked[part.id]}
-                    onClick={() => select(selected === part.id ? null : part.id)}
+                    onClick={(e) => select(part.id, e.ctrlKey || e.metaKey || e.shiftKey)}
                   >
                     {part.name}
                   </button>

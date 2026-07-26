@@ -1,5 +1,5 @@
 # sketchup_mcp_server.rb
-# SketchUp MCP Bridge Plugin - v2.3
+# SketchUp MCP Bridge Plugin - v2.4
 #
 # Embeds a lightweight TCP/HTTP server inside SketchUp so that
 # an external MCP server (Python) can drive SketchUp programmatically.
@@ -48,6 +48,17 @@
 #     общая у них только папка визиток. Поэтому окно не «забирает» признак у
 #     других, а лишь отмечает время нажатия; побеждает самое свежее, и решает
 #     это читающая сторона.
+#
+# --- v2.4 -------------------------------------------------------------------
+#   * удаление, отмена и выделение стали настоящими маршрутами вместо
+#     произвольного кода через execute_ruby. На отмене это подводило: способ,
+#     который выбирала модель, молча ничего не делал, а вызов возвращал успех.
+#     Проверено на живом SketchUp — Sketchup.undo работает и отменяет последнюю
+#     зафиксированную операцию;
+#   * удаление проверяет ФАКТ: удалённое перечитывается и не должно находиться;
+#   * снимок модели несёт выделение самого SketchUp, а /model/selection
+#     позволяет его задать — выделение в веб-морде и в приложении становится
+#     одним и тем же, а не двумя независимыми.
 
 require 'socket'
 require 'json'
@@ -277,7 +288,7 @@ module SU_MCP
       host:        '127.0.0.1',
       app:         'sketchup',
       app_version: (Sketchup.version.to_s rescue nil),
-      plugin:      '2.3',
+      plugin:      '2.4',
       # Когда человек назначил это окно рабочим для ИИ. nil — не назначал.
       ai_target_at: (@ai_target_at ? @ai_target_at.strftime('%Y-%m-%dT%H:%M:%SZ') : nil)
     }.merge(model_descriptor)
@@ -1228,7 +1239,11 @@ module SU_MCP
       triangles: state[:triangles],
       truncated: state[:truncated],
       nodes:     state[:nodes].values,
-      parts:     state[:parts]
+      parts:     state[:parts],
+      # Что выделено в самом SketchUp. Идёт вместе со снимком, чтобы веб-морда
+      # подхватывала выделение, сделанное руками в приложении, а не заводила
+      # своё, ни с чем не связанное.
+      selection: model.selection.map { |e| "ent:#{e.entityID}" }
     }
   end
 
@@ -1328,8 +1343,96 @@ module SU_MCP
     end
   end
 
+  # ---------------------------------------------------------------------------
+  # Удаление, отмена и выделение
+  #
+  # Все три раньше делались через execute_ruby — то есть произвольным кодом,
+  # который модель писала на ходу. На отмене это и подвело: выбранный ею способ
+  # молча ничего не делал, а вызов возвращал «успех».
+  #
+  # Проверено на живом SketchUp: Sketchup.undo работает и отменяет последнюю
+  # зафиксированную операцию. Каждая правка у нас обёрнута в
+  # start_operation/commit_operation, поэтому одна отмена = один вызов.
+  # ---------------------------------------------------------------------------
+
+  def self.handle_delete_entities(p)
+    ids = p['entity_ids'] || (p['entity_id'] ? [p['entity_id']] : [])
+    raise 'entity_ids required' if ids.empty?
+
+    m = model
+    m.start_operation('MCP: Delete', true)
+    begin
+      deleted = []
+      missing = []
+      ids.each do |id|
+        e = find_entity_by_id(id)
+        if e.nil? || !e.valid?
+          missing << id.to_i
+          next
+        end
+        name = e.respond_to?(:name) ? e.name : nil
+        e.erase!
+        deleted << { id: id.to_i, name: name }
+      end
+      m.commit_operation
+
+      # Проверяем ФАКТ, а не намерение: удалённое не должно находиться.
+      still_there = deleted.map { |d| d[:id] }.select { |id| find_entity_by_id(id) }
+      {
+        deleted: deleted,
+        missing: missing,
+        still_present: still_there,
+        ok: still_there.empty?
+      }
+    rescue StandardError
+      safe_abort(m)
+      raise
+    end
+  end
+
+  def self.handle_undo(_p)
+    m = model
+    before = m.entities.count
+    Sketchup.undo
+    after = m.entities.count
+    {
+      ok: true,
+      entities_before: before,
+      entities_after: after,
+      changed: before != after,
+      note: before == after ? 'число объектов не изменилось — проверь результат сам' : nil
+    }
+  end
+
+  def self.handle_get_selection(_p)
+    model.selection.map do |e|
+      item = { id: e.entityID, type: e.class.name.split('::').last, layer: e.layer.name }
+      item[:name] = e.name if e.respond_to?(:name) && !e.name.to_s.empty?
+      item[:name] ||= e.definition.name if e.is_a?(Sketchup::ComponentInstance)
+      item
+    end
+  end
+
+  def self.handle_set_selection(p)
+    ids = p['entity_ids'] || []
+    sel = model.selection
+    sel.clear
+    found = []
+    ids.each do |id|
+      e = find_entity_by_id(id)
+      next unless e && e.valid?
+      sel.add(e)
+      found << id.to_i
+    end
+    { selected: found, missing: ids.map(&:to_i) - found, count: sel.length }
+  end
+
   ROUTES = {
     ['GET',  '/model/mesh']              => :handle_model_mesh,
+    ['GET',  '/model/selection']         => :handle_get_selection,
+    ['POST', '/model/selection']         => :handle_set_selection,
+    ['POST', '/model/delete']            => :handle_delete_entities,
+    ['POST', '/model/undo']              => :handle_undo,
     ['GET',  '/instance/info']           => :handle_instance_info,
     ['POST', '/view/screenshot']         => :handle_viewport_screenshot,
     ['POST', '/operations/boolean']      => :handle_boolean_operation,
@@ -1636,7 +1739,7 @@ module SU_MCP
   end
 
   unless file_loaded?(__FILE__)
-    log "Loading SketchUp MCP Plugin v2.3"
+    log "Loading SketchUp MCP Plugin v2.4"
     Sketchup.add_observer(AppWatcher.new) rescue nil
     at_exit { SU_MCP.remove_card rescue nil }
     log "Ruby #{RUBY_VERSION} | SketchUp #{Sketchup.version}"

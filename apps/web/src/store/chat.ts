@@ -86,19 +86,25 @@ export const useChat = create<ChatState>()((set, get) => ({
  * что показывает аутлайнер, — тогда имя и слой совпадают с тем, что человек
  * видит на экране.
  */
-function currentSelection(): SelectionRef | undefined {
-  const id = useViewport.getState().selected
-  if (!id) return undefined
+function currentSelection(): SelectionRef[] | undefined {
+  const ids = useViewport.getState().selected
+  if (!ids.length) return undefined
 
   const snapshot = useModel.getState().snapshot
-  const node = snapshot?.nodes.find((n) => n.id === id)
-  if (!node) return undefined
+  if (!snapshot) return undefined
 
-  const parent = snapshot?.nodes.find((n) => n.id === node.parentId)
-  return {
-    id: node.id,
-    name: node.name,
-    kind: node.kind,
-    layer: node.kind === 'layer' ? node.name : parent?.name,
-  }
+  const refs = ids
+    .map((id) => snapshot.nodes.find((n) => n.id === id))
+    .filter((node): node is NonNullable<typeof node> => Boolean(node))
+    .map((node) => {
+      const parent = snapshot.nodes.find((n) => n.id === node.parentId)
+      return {
+        id: node.id,
+        name: node.name,
+        kind: node.kind,
+        layer: node.kind === 'layer' ? node.name : parent?.name,
+      }
+    })
+
+  return refs.length ? refs : undefined
 }

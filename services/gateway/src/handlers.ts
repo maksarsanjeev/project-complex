@@ -161,6 +161,30 @@ export const methods: Record<string, Method> = {
     return { ...raw, engine, instance, takenAt: nowIso() }
   },
 
+  /**
+   * Отразить выделение веб-морды в самом движке.
+   *
+   * Без этого выделений два и они не связаны: человек выделяет объект в
+   * браузере, а в SketchUp подсвечено что-то своё. На вопрос «что я выделил»
+   * это давало прямо противоречивые ответы.
+   */
+  setSelection: async (p): Promise<{ ok: boolean }> => {
+    const engine = (s(p.engine) || 'sketchup') as EngineId
+    if (!agents.isOnline(engine)) return { ok: false }
+
+    // Наружу узлы зовутся `ent:43725`, движку нужно только число.
+    const ids = (Array.isArray(p.ids) ? p.ids : [])
+      .map((id) => Number(String(id).replace(/^ent:/, '')))
+      .filter((id) => Number.isFinite(id))
+
+    await agents.invoke({
+      engine,
+      command: 'POST /model/selection',
+      params: { entity_ids: ids },
+    })
+    return { ok: true }
+  },
+
   /** База знаний — отдельный этап; пока честно отдаём пустоту. */
   searchKnowledge: (): KnowledgeHit[] => [],
 }
@@ -182,7 +206,7 @@ export const streamMethods: Record<string, StreamMethod> = {
 
     const providers = methods.listProviders({}) as ModelProvider[]
     const provider = providers.find((x) => x.id === s(p.modelId))
-    const selection = (p.selection as SelectionRef | undefined) ?? undefined
+    const selection = (p.selection as SelectionRef[] | undefined) ?? undefined
 
     for await (const event of streamAnswer({ sessionId, text, provider, selection })) {
       yield event satisfies ChatEvent

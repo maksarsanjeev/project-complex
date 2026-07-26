@@ -120,7 +120,23 @@ function PartInspector() {
     () => (snapshot ? treeFromSnapshot(snapshot) : buildSceneTree(params)),
     [snapshot, params],
   )
-  const found = selected ? findPart(tree, selected) : null
+  if (selected.length > 1) {
+    // Разбирать по полям набор объектов бессмысленно — показываем состав.
+    const names = selected
+      .map((id) => findPart(tree, id)?.part.name ?? id)
+      .join(', ')
+    return (
+      <div className={s.fields}>
+        <div className={s.kv}>
+          <Label>{t('inspect.selectedCount')}</Label>
+          <span className={s.kvValue}>{selected.length}</span>
+        </div>
+        <Label tone="muted">{names}</Label>
+      </div>
+    )
+  }
+
+  const found = selected[0] ? findPart(tree, selected[0]) : null
 
   if (!found) return <Label>{t('inspect.empty')}</Label>
 

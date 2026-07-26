@@ -1,6 +1,7 @@
 import type { EngineId, ModelSnapshot, SceneNode } from '@complex/protocol'
 import { create } from 'zustand'
 import { transport } from '../api/transport'
+import { useViewport } from './viewport'
 
 /**
  * Настоящая модель из движка.
@@ -55,6 +56,15 @@ export const useModel = create<ModelState>()((set) => ({
         bounds: snapshot ? measure(snapshot) : null,
         loading: false,
       })
+
+      // Выделение, сделанное руками в самом приложении, подхватываем в
+      // интерфейс. Иначе человек выделяет в SketchUp, спрашивает «что я
+      // выделил» — и получает ответ про другое выделение.
+      if (snapshot?.selection?.length) {
+        const known = new Set(snapshot.nodes.map((n) => n.id))
+        const ids = snapshot.selection.filter((id) => known.has(id))
+        if (ids.length) useViewport.getState().selectMany(ids)
+      }
     } catch (error) {
       set({
         loading: false,

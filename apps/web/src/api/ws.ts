@@ -171,7 +171,7 @@ export class WsTransport implements Transport {
     text: string
     attachments?: ChatAttachment[]
     modelId: string
-    selection?: SelectionRef
+    selection?: SelectionRef[]
   }): AsyncIterable<ChatEvent> {
     return this.stream<ChatEvent>('sendMessage', input)
   }
@@ -198,6 +198,10 @@ export class WsTransport implements Transport {
 
   pullModel(input?: { engine?: EngineId; instance?: string }): Promise<ModelSnapshot | null> {
     return this.call('pullModel', input ?? {})
+  }
+
+  setSelection(ids: string[], engine?: EngineId): Promise<void> {
+    return this.call('setSelection', { ids, engine })
   }
 }
 

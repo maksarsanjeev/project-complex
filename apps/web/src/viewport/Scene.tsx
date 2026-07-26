@@ -281,10 +281,11 @@ function RealModel() {
             event.stopPropagation()
             // Заблокированную часть не выделяем — так же, как у башни.
             if (locked[part.id]) return
-            select(selected === part.id ? null : part.id)
+            // Ctrl или Shift добавляют к выделению: привычно по всем редакторам.
+            select(part.id, event.ctrlKey || event.metaKey || event.shiftKey)
           }}
         >
-          <SurfaceMaterial tone={toneForLayer(part.layer)} active={selected === part.id} />
+          <SurfaceMaterial tone={toneForLayer(part.layer)} active={selected.includes(part.id)} />
         </mesh>
       ))}
     </group>
@@ -369,7 +370,7 @@ function Tower() {
       {/* ядро жёсткости */}
       <mesh position={[0, h / 2, 0]} visible={!hidden.core} onClick={pick('core')}>
         <cylinderGeometry args={[r * 0.34, r * 0.34, h, params.sides]} />
-        <SurfaceMaterial tone="alt" active={selected === 'core'} />
+        <SurfaceMaterial tone="alt" active={selected.includes('core')} />
       </mesh>
 
       {/* перекрытия */}
@@ -381,7 +382,7 @@ function Tower() {
         onClick={pick('slabs')}
       >
         <cylinderGeometry args={[r, r, 1, params.sides]} />
-        <SurfaceMaterial tone="base" active={selected === 'slabs'} />
+        <SurfaceMaterial tone="base" active={selected.includes('slabs')} />
       </instancedMesh>
 
       {/* диагрид */}
@@ -393,12 +394,12 @@ function Tower() {
         onClick={pick('diagrid')}
       >
         <boxGeometry args={[params.ribSize * MM, 1, params.ribSize * MM]} />
-        <SurfaceMaterial tone="alt" active={selected === 'diagrid'} />
+        <SurfaceMaterial tone="alt" active={selected.includes('diagrid')} />
       </instancedMesh>
 
       {/* витраж */}
       <mesh geometry={skin} visible={!hidden.glass} onClick={pick('glass')}>
-        <SurfaceMaterial tone="glass" active={selected === 'glass'} />
+        <SurfaceMaterial tone="glass" active={selected.includes('glass')} />
       </mesh>
 
       {/* Контуры принадлежат своим частям и гаснут вместе с ними. */}

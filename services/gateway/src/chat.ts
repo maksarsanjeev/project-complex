@@ -101,7 +101,7 @@ export async function* streamAnswer(input: {
   sessionId: string
   text: string
   provider?: ModelProvider
-  selection?: SelectionRef
+  selection?: SelectionRef[]
 }): AsyncGenerator<ChatEvent> {
   const messageId = newId('m')
   const model = input.provider?.model || config.defaultModel
@@ -231,18 +231,40 @@ export async function* streamAnswer(input: {
  * su_push_pull, su_move, su_boolean и остальные инструменты правки, поэтому
  * его и называем прямо — иначе модель пошла бы искать объект списком.
  */
-function describeSelection(selection?: SelectionRef): string {
-  if (!selection) return ''
+function describeSelection(selection?: SelectionRef[]): string {
+  // Молчать, когда выделения нет, оказалось плохой мыслью: на вопрос «какой
+  // объект я выделил» модель молча шла смотреть выделение в самом SketchUp и
+  // отвечала про него. Два разных выделения подменялись одно другим. Поэтому
+  // говорим и про пустоту тоже.
+  if (!selection?.length) {
+    return 'В веб-морде сейчас ничего не выделено. Если человек ссылается на «выделенное», ' +
+      'уточни, что он имеет в виду, либо посмотри выделение в самом SketchUp через su_get_selection — ' +
+      'но тогда так и скажи, что смотришь выделение в приложении, а не в веб-морде.'
+  }
 
-  const entity = selection.id.startsWith('ent:') ? selection.id.slice(4) : null
-  const layer = selection.layer ? `, слой «${selection.layer}»` : ''
+  const entityIds = selection
+    .map((item) => (item.id.startsWith('ent:') ? item.id.slice(4) : null))
+    .filter((id): id is string => id !== null)
+
+  const list = selection
+    .map((item) => {
+      const layer = item.layer ? `, слой «${item.layer}»` : ''
+      const entity = item.id.startsWith('ent:') ? `, entity_id ${item.id.slice(4)}` : ''
+      const kind = item.kind === 'layer' ? ' (это слой целиком)' : ''
+      return `«${item.name}»${kind}${layer}${entity}`
+    })
+    .join('; ')
+
+  const many = selection.length > 1
 
   return (
-    `Пользователь выделил в интерфейсе: «${selection.name}»${layer}. ` +
-    (entity
-      ? `Его entity_id в SketchUp — ${entity}; используй именно это число в инструментах правки. `
+    `Пользователь выделил в веб-морде ${many ? `${selection.length} объекта(ов)` : 'объект'}: ${list}. ` +
+    (entityIds.length
+      ? `Их entity_id в SketchUp: ${entityIds.join(', ')} — используй именно эти числа в инструментах правки. `
       : '') +
-    'Если он говорит «этот объект», «выделенное» и тому подобное — речь про него.'
+    'Когда он говорит «этот объект», «выделенное», «эти» — речь про них. ' +
+    (many ? 'Правки применяй ко всем перечисленным, если он не сказал иначе. ' : '') +
+    'Если выделен слой, работать надо со всеми объектами внутри него — их состав смотри в дереве модели.'
   )
 }
 
@@ -395,6 +417,16 @@ const SYSTEM_PROMPT = [
   'Прежде чем править существующую геометрию, посмотри на неё соответствующим инструментом:',
   'идентификаторы объектов нельзя угадать, их получают из списка.',
   'Никогда не сообщай, что построил что-то, если вызов инструмента не прошёл.',
+  '',
+  'ПРОВЕРЯЙ РЕЗУЛЬТАТ, А НЕ ФАКТ ВЫЗОВА. Успешный вызов означает только то, что команда',
+  'дошла до движка, — но не то, что получилось задуманное. После каждой правки перечитай',
+  'модель и убедись: объект появился, исчез, сдвинулся, стал нужного размера. Особенно это',
+  'касается удаления, отмены и всего, что делается через выполнение кода. Если проверка',
+  'расходится с ожиданием — скажи об этом прямо, а не докладывай об успехе.',
+  '',
+  'Если объект нужно вернуть, не выдавай пересоздание за восстановление: новый объект встанет',
+  'туда, куда ты его поставишь, а не туда, где был исходный. Скажи, что создал заново, и укажи',
+  'положение — либо сперва запомни координаты, а потом восстанови их.',
 ].join(' ')
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))

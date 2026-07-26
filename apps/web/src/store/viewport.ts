@@ -50,7 +50,13 @@ interface ViewportState {
   projection: Projection
   grid: boolean
   gizmo: boolean
-  selected: PartId | null
+  /**
+   * Что выделено. Список, а не одна часть: с несколькими объектами работают
+   * не реже, чем с одним, — назначить материал группе деталей, подвинуть
+   * набор, удалить лишнее. Выделение уходит модели вместе с сообщением,
+   * поэтому «примени это ко всем выделенным» должно быть выразимо.
+   */
+  selected: PartId[]
   params: TowerParams
   stats: ViewStats
   /** Скрытые и заблокированные части — ими управляет аутлайнер. */
@@ -64,7 +70,10 @@ interface ViewportState {
   setProjection: (p: Projection) => void
   toggleGrid: () => void
   toggleGizmo: () => void
-  select: (part: PartId | null) => void
+  /** Выделить одну часть. `additive` — добавить к уже выделенному. */
+  select: (part: PartId | null, additive?: boolean) => void
+  /** Выделить сразу набор — например все части слоя. */
+  selectMany: (parts: PartId[]) => void
   setParam: <K extends keyof TowerParams>(key: K, value: TowerParams[K]) => void
   setStats: (stats: Partial<ViewStats>) => void
   setDropped: (name: string | null) => void
@@ -87,7 +96,7 @@ export const useViewport = create<ViewportState>()(
       projection: 'persp',
       grid: true,
       gizmo: true,
-      selected: null,
+      selected: [],
       params: {
         floors: 24,
         floorHeight: 3600,
@@ -106,7 +115,18 @@ export const useViewport = create<ViewportState>()(
       setProjection: (projection) => set({ projection }),
       toggleGrid: () => set((s) => ({ grid: !s.grid })),
       toggleGizmo: () => set((s) => ({ gizmo: !s.gizmo })),
-      select: (selected) => set({ selected }),
+      select: (part, additive = false) =>
+        set((s) => {
+          if (part === null) return { selected: [] }
+          if (!additive) return { selected: s.selected.includes(part) && s.selected.length === 1 ? [] : [part] }
+          return {
+            selected: s.selected.includes(part)
+              ? s.selected.filter((x) => x !== part)
+              : [...s.selected, part],
+          }
+        }),
+
+      selectMany: (parts) => set({ selected: parts }),
 
       setParam: (key, value) =>
         set((s) => ({ params: { ...s.params, [key]: clampParam(key, value) } })),
@@ -119,13 +139,13 @@ export const useViewport = create<ViewportState>()(
         set((s) => {
           const hidden = { ...s.hidden, [part]: !s.hidden[part] }
           // Скрытую часть снимаем с выделения — иначе инспектор показывает невидимое.
-          return { hidden, selected: hidden[part] && s.selected === part ? null : s.selected }
+          return { hidden, selected: hidden[part] ? s.selected.filter((x) => x !== part) : s.selected }
         }),
 
       toggleLocked: (part) =>
         set((s) => {
           const locked = { ...s.locked, [part]: !s.locked[part] }
-          return { locked, selected: locked[part] && s.selected === part ? null : s.selected }
+          return { locked, selected: locked[part] ? s.selected.filter((x) => x !== part) : s.selected }
         }),
     }),
     {

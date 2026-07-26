@@ -245,6 +245,8 @@ export interface ModelSnapshot {
   /** Дерево для аутлайнера. */
   nodes: SceneNode[]
   parts: MeshPart[]
+  /** Что выделено в самом движке на момент снимка: узлы вида `ent:43725`. */
+  selection?: string[]
   /** Когда снято — вьюпорт показывает свежесть. */
   takenAt: Timestamp
 }
@@ -488,7 +490,7 @@ export interface Transport {
     attachments?: ChatAttachment[]
     modelId: string
     /** Что выделено во вьюпорте — чтобы «измени выделенный» имел смысл. */
-    selection?: SelectionRef
+    selection?: SelectionRef[]
   }): AsyncIterable<ChatEvent>
 
   runJob(spec: JobSpec): AsyncIterable<JobEvent>
@@ -501,6 +503,11 @@ export interface Transport {
    * движок не запущен — это обычное положение дел, а не ошибка.
    */
   pullModel(input?: { engine?: EngineId; instance?: string }): Promise<ModelSnapshot | null>
+  /**
+   * Отразить выделение веб-морды в движке, чтобы человек видел на экране
+   * приложения то же, что выделил в браузере.
+   */
+  setSelection(ids: string[], engine?: EngineId): Promise<void>
 
   saveGraph(sessionId: string, doc: GraphDoc): Promise<void>
 }
