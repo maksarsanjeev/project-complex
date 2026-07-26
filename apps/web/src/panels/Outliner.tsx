@@ -1,5 +1,6 @@
 import { Eye, EyeOff, Lock, Unlock } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
+import { transport } from '../api/transport'
 import { t } from '../i18n'
 import { useEngines } from '../store/engine'
 import { useViewport, type PartId } from '../store/viewport'
@@ -22,6 +23,27 @@ export function Outliner() {
   const toggleLocked = useViewport((v) => v.toggleLocked)
   const select = useViewport((v) => v.select)
   const selectMany = useViewport((v) => v.selectMany)
+  const [editing, setEditing] = useState<string | null>(null)
+  const pull = useModel((m) => m.pull)
+
+  /**
+   * Имя уходит в сам движок, а не остаётся подписью в списке. После успеха
+   * перечитываем модель: у россыпи граней имени в SketchUp нет, и присвоение
+   * имени превращает её в группу — идентификатор узла меняется, и знать об
+   * этом должен снимок, а не мы на глазок.
+   */
+  const commitRename = async (nodeId: string, value: string) => {
+    setEditing(null)
+    const name = value.trim()
+    const current = tree.flatMap((l) => l.parts).find((p) => p.id === nodeId)?.name
+    if (!name || name === current) return
+    try {
+      await transport.renameObject({ nodeId, name })
+      await pull()
+    } catch {
+      // Движок отказал — снимок не трогаем, в списке остаётся прежнее имя.
+    }
+  }
 
   // Есть снимок из движка — показываем его. Демо-башня остаётся для пустой
   // сессии, чтобы панель не выглядела сломанной, пока движок не подключён.
@@ -122,16 +144,31 @@ export function Outliner() {
                   data-selected={selected.includes(part.id) || undefined}
                 >
                   <span className={s.nodeIndent} style={{ width: 22 }} />
-                  {/* Заблокированную часть нельзя выделить и отсюда, а не только в сцене. */}
-                  <button
-                    type="button"
-                    className={s.nodeName}
-                    title={locked[part.id] ? t('outliner.lockedHint') : part.name}
-                    disabled={locked[part.id]}
-                    onClick={(e) => select(part.id, e.ctrlKey || e.metaKey || e.shiftKey)}
-                  >
-                    {part.name}
-                  </button>
+                  {/* Двойной клик переименовывает — привычно по любому дереву. */}
+                  {editing === part.id ? (
+                    <input
+                      className={s.nodeName}
+                      autoFocus
+                      defaultValue={part.name}
+                      onBlur={(e) => void commitRename(part.id, e.currentTarget.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') e.currentTarget.blur()
+                        if (e.key === 'Escape') setEditing(null)
+                      }}
+                    />
+                  ) : (
+                    /* Заблокированную часть нельзя выделить и отсюда, а не только в сцене. */
+                    <button
+                      type="button"
+                      className={s.nodeName}
+                      title={locked[part.id] ? t('outliner.lockedHint') : t('outliner.renameHint')}
+                      disabled={locked[part.id]}
+                      onClick={(e) => select(part.id, e.ctrlKey || e.metaKey || e.shiftKey)}
+                      onDoubleClick={() => setEditing(part.id)}
+                    >
+                      {part.name}
+                    </button>
+                  )}
                   <span className={s.nodeTris}>{part.triangles.toLocaleString('ru-RU')}</span>
                   <span className={s.nodeBtns}>
                     <IconButton onClick={() => toggleHidden(part.id)} title={t('outliner.visibility')}>

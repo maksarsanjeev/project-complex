@@ -520,6 +520,18 @@ export interface Transport {
    * приложения то же, что выделил в браузере.
    */
   setSelection(ids: string[], engine?: EngineId): Promise<void>
+  /**
+   * Переименовать объект в самом движке.
+   *
+   * Возвращает новый идентификатор узла: у россыпи граней имени в SketchUp нет
+   * и быть не может, поэтому дать ей имя означает сгруппировать её — и узел
+   * из `loose:…` становится `ent:…`.
+   */
+  renameObject(input: {
+    nodeId: string
+    name: string
+    engine?: EngineId
+  }): Promise<{ nodeId: string; grouped: boolean } | null>
 
   saveGraph(sessionId: string, doc: GraphDoc): Promise<void>
 }

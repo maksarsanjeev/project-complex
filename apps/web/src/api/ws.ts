@@ -207,6 +207,14 @@ export class WsTransport implements Transport {
   setSelection(ids: string[], engine?: EngineId): Promise<void> {
     return this.call('setSelection', { ids, engine })
   }
+
+  renameObject(input: {
+    nodeId: string
+    name: string
+    engine?: EngineId
+  }): Promise<{ nodeId: string; grouped: boolean } | null> {
+    return this.call('renameObject', input)
+  }
 }
 
 /**

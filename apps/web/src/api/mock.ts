@@ -350,9 +350,14 @@ export class MockTransport implements Transport {
     return null
   }
 
-  /** У мока движка нет — отражать выделение некуда. */
+  /** У мока движка нет — отражать выделение и имена некуда. */
   async setSelection(): Promise<void> {
     await sleep(30)
+  }
+
+  async renameObject(): Promise<null> {
+    await sleep(30)
+    return null
   }
 
   async searchKnowledge(query: string): Promise<KnowledgeHit[]> {

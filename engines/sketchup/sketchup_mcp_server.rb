@@ -1,5 +1,5 @@
 # sketchup_mcp_server.rb
-# SketchUp MCP Bridge Plugin - v2.4
+# SketchUp MCP Bridge Plugin - v2.5
 #
 # Embeds a lightweight TCP/HTTP server inside SketchUp so that
 # an external MCP server (Python) can drive SketchUp programmatically.
@@ -59,6 +59,18 @@
 #   * снимок модели несёт выделение самого SketchUp, а /model/selection
 #     позволяет его задать — выделение в веб-морде и в приложении становится
 #     одним и тем же, а не двумя независимыми.
+#
+# --- v2.5 -------------------------------------------------------------------
+#   * геометрия вне групп разбивается на СВЯЗНЫЕ КУСКИ: одна фигура — одна
+#     строка в дереве. Раньше все несгруппированные фигуры слоя сливались в
+#     один узел, и вторая нарисованная не появлялась в списке вовсе;
+#   * имя объекта берётся то, которое даёт сам SketchUp: у безымянной группы
+#     это имя её определения («Group#3»), как и в родном аутлайнере. Своё
+#     придумывать нельзя — человек ищет в списке то же слово, что видит в
+#     приложении;
+#   * /model/rename переименовывает объект. У россыпи граней имени в SketchUp
+#     нет и быть не может, поэтому дать ей имя = сгруппировать её. Это ровно
+#     то, что сделал бы человек руками, но происходит явно и сообщается наружу.
 
 require 'socket'
 require 'json'
@@ -288,7 +300,7 @@ module SU_MCP
       host:        '127.0.0.1',
       app:         'sketchup',
       app_version: (Sketchup.version.to_s rescue nil),
-      plugin:      '2.4',
+      plugin:      '2.5',
       # Когда человек назначил это окно рабочим для ИИ. nil — не назначал.
       ai_target_at: (@ai_target_at ? @ai_target_at.strftime('%Y-%m-%dT%H:%M:%SZ') : nil)
     }.merge(model_descriptor)
@@ -1279,7 +1291,12 @@ module SU_MCP
       case e
       when Sketchup::Group, Sketchup::ComponentInstance
         is_group = e.is_a?(Sketchup::Group)
-        name = is_group ? (e.name.to_s.empty? ? 'Группа' : e.name) : e.definition.name
+        # Имя берём то, которое даёт сам SketchUp. У безымянной группы это имя
+        # её определения — «Group#3» и подобные; именно так она и подписана в
+        # родном аутлайнере. Придумывать своё нельзя: человек ищет в списке то
+        # же слово, что видит в приложении.
+        name = e.name.to_s.empty? ? e.definition.name : e.name
+        name = e.definition.name if !is_group && e.name.to_s.empty?
         layer_id = ensure_layer_node(e.layer.name, state)
         node_id = "ent:#{e.entityID}"
         state[:nodes][node_id] = {
@@ -1297,7 +1314,38 @@ module SU_MCP
         # на Layer0, а материал задан самой группе. Иначе «Пирамида» на слое
         # «камень» отрапортовала бы про Layer0, и раскраска по материалу соврала бы.
         layer_name = parent_layer || e.layer.name
-        node_id = parent_id || ensure_layer_node(layer_name, state)
+
+        node_id =
+          if parent_id
+            parent_id
+          else
+            # Геометрия, нарисованная прямо в модели, а не внутри группы, —
+            # обычное дело: человек взял карандаш и провёл линии.
+            #
+            # Разбиваем её на СВЯЗНЫЕ КУСКИ: одна фигура — одна строка в дереве.
+            # Иначе две несвязанные фигуры на одном слое сливались в один узел,
+            # и вторая в списке не появлялась вовсе.
+            #
+            # Ключ узла — идентификатор одной из граней куска. Он не только
+            # различает куски, но и позволяет потом найти их обратно: по грани
+            # берётся all_connected, и весь кусок в руках.
+            layer_id = ensure_layer_node(layer_name, state)
+            anchor = loose_anchor(e, state)
+            loose_id = "loose:#{anchor}"
+            state[:nodes][loose_id] ||= {
+              id: loose_id,
+              # Имени у такой геометрии в SketchUp нет вовсе — её и в родном
+              # аутлайнере не показывают. Поэтому подписываем нейтрально и
+              # добавляем номер грани, чтобы куски различались. Как только
+              # человек даст имя, кусок станет настоящей группой с этим именем.
+              name: "вне групп #{anchor}",
+              kind: 'mesh',
+              parentId: layer_id,
+              visible: true, locked: false, triangles: 0
+            }
+            loose_id
+          end
+
         loose[node_id] ||= { positions: [], normals: [], layer: layer_name, count: 0 }
         add_face(e, transform, loose[node_id], state)
       end
@@ -1314,6 +1362,25 @@ module SU_MCP
       }
       bump_triangles(node_id, bucket[:count], state)
     end
+  end
+
+  # Опорная грань связного куска: наименьший идентификатор среди всех граней,
+  # соединённых с данной. Наименьший — чтобы ключ куска не менялся от того, с
+  # какой грани мы начали обход, иначе строка в дереве прыгала бы при каждом
+  # снимке и выделение слетало.
+  #
+  # Результат запоминаем на всё время снимка: all_connected на большой модели
+  # стоит дорого, а спрашивать его придётся для каждой грани куска.
+  def self.loose_anchor(face, state)
+    state[:anchors] ||= {}
+    known = state[:anchors][face.entityID]
+    return known if known
+
+    ids = face.all_connected.grep(Sketchup::Face).map(&:entityID)
+    ids = [face.entityID] if ids.empty?
+    anchor = ids.min
+    ids.each { |id| state[:anchors][id] = anchor }
+    anchor
   end
 
   def self.add_face(face, transform, bucket, state)
@@ -1404,6 +1471,52 @@ module SU_MCP
     }
   end
 
+  # Переименование объекта прямо в SketchUp.
+  #
+  # Тонкость, которую не обойти: имя в SketchUp есть только у группы и у
+  # компонента. У россыпи граней его нет и быть не может — поэтому дать ей имя
+  # означает сгруппировать её. Это ровно то, что сделал бы человек руками, но
+  # молчать об этом нельзя: модель меняется, а не только подпись.
+  def self.handle_rename(p)
+    name = p['name'].to_s.strip
+    raise 'name required' if name.empty?
+
+    node = p['node_id'].to_s
+    m = model
+    m.start_operation('MCP: Rename', true)
+    begin
+      result =
+        if node.start_with?('loose:')
+          anchor = node.sub('loose:', '').to_i
+          face = find_entity_by_id(anchor)
+          raise "кусок #{anchor} не найден" unless face.is_a?(Sketchup::Face)
+
+          connected = face.all_connected
+          group = m.entities.add_group(connected)
+          group.name = name
+          { grouped: true, id: group.entityID, name: group.name,
+            entities: connected.length, node_id: "ent:#{group.entityID}" }
+        else
+          id = node.sub('ent:', '').to_i
+          e = find_entity_by_id(id)
+          raise "объект #{id} не найден" unless e
+          raise 'у этого объекта нельзя задать имя' unless e.respond_to?(:name=)
+
+          e.name = name
+          { grouped: false, id: e.entityID, name: e.name, node_id: "ent:#{e.entityID}" }
+        end
+      m.commit_operation
+
+      # Проверяем факт: перечитываем имя из модели, а не верим присваиванию.
+      check = find_entity_by_id(result[:id])
+      result[:confirmed] = (check && check.respond_to?(:name) && check.name == name) ? true : false
+      result
+    rescue StandardError
+      safe_abort(m)
+      raise
+    end
+  end
+
   def self.handle_get_selection(_p)
     model.selection.map do |e|
       item = { id: e.entityID, type: e.class.name.split('::').last, layer: e.layer.name }
@@ -1433,6 +1546,7 @@ module SU_MCP
     ['POST', '/model/selection']         => :handle_set_selection,
     ['POST', '/model/delete']            => :handle_delete_entities,
     ['POST', '/model/undo']              => :handle_undo,
+    ['POST', '/model/rename']            => :handle_rename,
     ['GET',  '/instance/info']           => :handle_instance_info,
     ['POST', '/view/screenshot']         => :handle_viewport_screenshot,
     ['POST', '/operations/boolean']      => :handle_boolean_operation,
@@ -1739,7 +1853,7 @@ module SU_MCP
   end
 
   unless file_loaded?(__FILE__)
-    log "Loading SketchUp MCP Plugin v2.4"
+    log "Loading SketchUp MCP Plugin v2.5"
     Sketchup.add_observer(AppWatcher.new) rescue nil
     at_exit { SU_MCP.remove_card rescue nil }
     log "Ruby #{RUBY_VERSION} | SketchUp #{Sketchup.version}"

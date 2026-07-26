@@ -192,6 +192,24 @@ export const methods: Record<string, Method> = {
     return { ok: true }
   },
 
+  /**
+   * Переименовать объект в движке. Имя, введённое в дереве сцены, должно
+   * оказаться в самом приложении — иначе список и модель разъедутся.
+   */
+  renameObject: async (p): Promise<{ nodeId: string; grouped: boolean } | null> => {
+    const engine = (s(p.engine) || 'sketchup') as EngineId
+    if (!agents.isOnline(engine)) return null
+
+    const raw = (await agents.invoke({
+      engine,
+      command: 'POST /model/rename',
+      params: { node_id: s(p.nodeId), name: s(p.name) },
+    })) as { node_id?: string; grouped?: boolean; confirmed?: boolean }
+
+    if (raw.confirmed === false) throw new Error('движок не подтвердил новое имя')
+    return { nodeId: s(raw.node_id), grouped: Boolean(raw.grouped) }
+  },
+
   /** База знаний — отдельный этап; пока честно отдаём пустоту. */
   searchKnowledge: (): KnowledgeHit[] => [],
 }
