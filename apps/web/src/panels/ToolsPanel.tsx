@@ -248,10 +248,15 @@ function ModelParams() {
  * в файле нет, — поэтому он живёт отдельным списком, как и в самом приложении.
  */
 function Tags() {
-  const tags = useModel((m) => m.snapshot?.tags ?? [])
-  const rows = useModel((m) => (m.snapshot ? rowsFromSnapshot(m.snapshot) : []))
+  // Селектор возвращает то, что лежит в сторе, и ничего не вычисляет: `?? []`
+  // и любое построение внутри него создают новый объект на каждый рендер,
+  // zustand видит новую ссылку и уходит в бесконечное обновление. Проверено
+  // на живой странице — React error #185.
+  const snapshot = useModel((m) => m.snapshot)
+  const tags = snapshot?.tags
+  const rows = useMemo(() => (snapshot ? rowsFromSnapshot(snapshot) : []), [snapshot])
 
-  if (!tags.length) return <Label tone="muted">{t('tags.empty')}</Label>
+  if (!tags?.length) return <Label tone="muted">{t('tags.empty')}</Label>
 
   return (
     <div className={s.fields}>
@@ -274,12 +279,16 @@ function Tags() {
 
 /** Материалы модели: цвет, прозрачность и на скольких объектах применён. */
 function Materials() {
-  const materials = useModel((m) => m.snapshot?.materials ?? [])
-
-  if (!materials.length) return <Label tone="muted">{t('materials.empty')}</Label>
+  const snapshot = useModel((m) => m.snapshot)
+  const materials = snapshot?.materials
 
   // Неиспользуемые вниз: они есть в файле, но на модель не влияют.
-  const sorted = [...materials].sort((a, b) => b.used - a.used)
+  const sorted = useMemo(
+    () => [...(materials ?? [])].sort((a, b) => b.used - a.used),
+    [materials],
+  )
+
+  if (!materials?.length) return <Label tone="muted">{t('materials.empty')}</Label>
 
   return (
     <div className={s.fields}>
@@ -316,9 +325,9 @@ function Materials() {
  * правка разойдётся по всей модели.
  */
 function Definitions() {
-  const definitions = useModel((m) => m.snapshot?.definitions ?? [])
+  const definitions = useModel((m) => m.snapshot)?.definitions
 
-  if (!definitions.length) return <Label tone="muted">{t('definitions.empty')}</Label>
+  if (!definitions?.length) return <Label tone="muted">{t('definitions.empty')}</Label>
 
   return (
     <div className={s.fields}>
