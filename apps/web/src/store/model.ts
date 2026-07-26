@@ -1,6 +1,7 @@
 import type { EngineId, ModelSnapshot, SceneNode } from '@complex/protocol'
 import { create } from 'zustand'
 import { transport } from '../api/transport'
+import { useSession } from './session'
 import { useViewport } from './viewport'
 
 /**
@@ -37,6 +38,8 @@ interface ModelState {
   error: string | null
   /** Забрать модель из движка. Тихо ничего не делает, если движок не запущен. */
   pull: (engine?: EngineId) => Promise<void>
+  /** Показать готовый снимок — им пользуется переключение сессий. */
+  adopt: (snapshot: ModelSnapshot | null) => void
   clear: () => void
 }
 
@@ -49,7 +52,10 @@ export const useModel = create<ModelState>()((set) => ({
   async pull(engine = 'sketchup') {
     set({ loading: true, error: null })
     try {
-      const snapshot = await transport.pullModel({ engine })
+      // Снимок принадлежит сессии, в которой работали, — сервер его туда и
+      // положит, чтобы при возврате к проекту модель была на месте.
+      const sessionId = useSession.getState().activeId ?? undefined
+      const snapshot = await transport.pullModel({ engine, sessionId })
       // Движок не запущен — это не ошибка, а обычное состояние.
       set({
         snapshot,
@@ -73,7 +79,14 @@ export const useModel = create<ModelState>()((set) => ({
     }
   },
 
+  adopt(snapshot) {
+    // Выделение принадлежит модели: при смене проекта оно теряет смысл.
+    useViewport.getState().select(null)
+    set({ snapshot, bounds: snapshot ? measure(snapshot) : null, error: null })
+  },
+
   clear() {
+    useViewport.getState().select(null)
     set({ snapshot: null, bounds: null, error: null })
   },
 }))

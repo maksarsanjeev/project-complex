@@ -2,6 +2,7 @@ import type {
   ChatMessage,
   EngineId,
   GraphDoc,
+  ModelSnapshot,
   Session,
   SessionState,
   ToolCall,
@@ -287,5 +288,34 @@ export function openSession(userId: string, sessionId: string): SessionState | n
     messages: listMessages(sessionId),
     scene: [],
     graph: getGraph(sessionId),
+    snapshot: getSnapshot(sessionId),
   }
+}
+
+/* ────────────────────────── снимок модели ────────────────────────── */
+
+/**
+ * Последний снимок модели этой сессии.
+ *
+ * Хранится строкой JSON: разбирать его на таблицы незачем — целиком пришёл,
+ * целиком уходит, а искать по треугольникам никто не собирается.
+ */
+export function getSnapshot(sessionId: string): ModelSnapshot | null {
+  const row = db.prepare('SELECT doc FROM snapshots WHERE session_id = ?').get(sessionId) as
+    | Row
+    | undefined
+  if (!row) return null
+  try {
+    return JSON.parse(str(row.doc)) as ModelSnapshot
+  } catch {
+    // Битая запись не должна мешать открыть сессию.
+    return null
+  }
+}
+
+export function saveSnapshot(sessionId: string, snapshot: ModelSnapshot): void {
+  db.prepare(
+    `INSERT INTO snapshots (session_id, doc, taken_at) VALUES (?, ?, ?)
+     ON CONFLICT(session_id) DO UPDATE SET doc = excluded.doc, taken_at = excluded.taken_at`,
+  ).run(sessionId, JSON.stringify(snapshot), snapshot.takenAt)
 }

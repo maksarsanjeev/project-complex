@@ -147,6 +147,13 @@ export interface SessionState {
   messages: ChatMessage[]
   scene: SceneNode[]
   graph: GraphDoc
+  /**
+   * Последний снимок модели ИМЕННО ЭТОЙ сессии.
+   *
+   * Снимок привязан к сессии, а не к приложению: иначе новый проект показывает
+   * модель предыдущего, и «проект» отличается от «проекта» только перепиской.
+   */
+  snapshot?: ModelSnapshot | null
 }
 
 /* ────────────────────────────── чат ────────────────────────────── */
@@ -502,7 +509,12 @@ export interface Transport {
    * Забрать модель из движка: геометрию и дерево. Возвращает null, когда
    * движок не запущен — это обычное положение дел, а не ошибка.
    */
-  pullModel(input?: { engine?: EngineId; instance?: string }): Promise<ModelSnapshot | null>
+  pullModel(input?: {
+    engine?: EngineId
+    instance?: string
+    /** Куда сохранить снимок. Без него снимок вернётся, но не запомнится. */
+    sessionId?: string
+  }): Promise<ModelSnapshot | null>
   /**
    * Отразить выделение веб-морды в движке, чтобы человек видел на экране
    * приложения то же, что выделил в браузере.

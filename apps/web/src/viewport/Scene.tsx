@@ -2,6 +2,7 @@ import { GizmoHelper, GizmoViewport, Grid, OrbitControls, OrthographicCamera, Pe
 import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
+import { useEngines } from '../store/engine'
 import { useLayout } from '../store/layout'
 import { useViewport, type PartId } from '../store/viewport'
 import {
@@ -428,6 +429,9 @@ export function Scene() {
   const bounds = useLoadedModel((s) => s.bounds)
   const snapshot = useModel((s) => s.snapshot)
   const snapBounds = useModel((s) => s.bounds)
+  // Параметрика есть у Rhino и Blender; в SketchUp её нет, и демо-башне там
+  // взяться неоткуда.
+  const parametric = useEngines((e) => e.boundEngine) !== 'sketchup'
   const pal = usePalette()
   const invalidate = useThree((s) => s.invalidate)
 
@@ -483,8 +487,21 @@ export function Scene() {
         />
       ) : null}
 
-      {/* Порядок важен: перетащенный файл перекрывает снимок, снимок — демо-башню. */}
-      {loaded ? <primitive object={loaded} /> : snapshot ? <RealModel /> : <Tower />}
+      {/*
+        Порядок: перетащенный файл перекрывает снимок, снимок — демо-башню.
+
+        Башня остаётся только для движков с параметрикой — там же, где
+        показывается панель «параметры модели». С привязанным SketchUp новый
+        проект должен открываться ПУСТЫМ: показывать в нём чужую демо-модель
+        значит выдавать её за содержимое проекта.
+      */}
+      {loaded ? (
+        <primitive object={loaded} />
+      ) : snapshot ? (
+        <RealModel />
+      ) : parametric ? (
+        <Tower />
+      ) : null}
 
       {/*
         Вьюпорт рисует по требованию, поэтому каждое движение камеры обязано само

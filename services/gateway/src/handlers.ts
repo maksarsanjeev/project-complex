@@ -158,7 +158,14 @@ export const methods: Record<string, Method> = {
       params: {},
     })) as Omit<ModelSnapshot, 'engine' | 'instance' | 'takenAt'>
 
-    return { ...raw, engine, instance, takenAt: nowIso() }
+    const snapshot: ModelSnapshot = { ...raw, engine, instance, takenAt: nowIso() }
+
+    // Кладём снимок в ту сессию, в которой работали. Иначе он один на всё
+    // приложение, и открыв другой проект, человек видит чужую модель.
+    const sessionId = s(p.sessionId)
+    if (sessionId) repo.saveSnapshot(sessionId, snapshot)
+
+    return snapshot
   },
 
   /**

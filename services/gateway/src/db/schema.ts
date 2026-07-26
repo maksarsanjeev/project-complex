@@ -70,6 +70,17 @@ CREATE TABLE IF NOT EXISTS graphs (
   updated_at  TEXT NOT NULL
 );
 
+-- Снимок модели той сессии, в которой над ней работали.
+--
+-- Строка на сессию, а не история: нужен последний вид, а не архив. Без этой
+-- таблицы снимок был один на всё приложение, и новый проект показывал модель
+-- предыдущего — сессии отличались только перепиской.
+CREATE TABLE IF NOT EXISTS snapshots (
+  session_id  TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+  doc         TEXT NOT NULL,
+  taken_at    TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS jobs (
   id           TEXT PRIMARY KEY,
   session_id   TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,

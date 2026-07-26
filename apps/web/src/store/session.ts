@@ -1,6 +1,7 @@
 import type { ChatEvent, ChatMessage, GraphDoc, ParamValue, Session } from '@complex/protocol'
 import { create } from 'zustand'
 import { transport } from '../api/transport'
+import { useModel } from './model'
 
 interface SessionState {
   sessions: Session[]
@@ -55,6 +56,9 @@ export const useSession = create<SessionState>()((set, get) => ({
 
   async select(id) {
     set({ loading: true, activeId: id, selectedNodeId: null })
+    // Модель предыдущей сессии убираем СРАЗУ, не дожидаясь ответа сервера:
+    // иначе на время загрузки в новом проекте висит чужая геометрия.
+    useModel.getState().adopt(null)
     const state = await transport.openSession(id)
     set({
       activeId: state.session.id,
@@ -62,6 +66,9 @@ export const useSession = create<SessionState>()((set, get) => ({
       graph: state.graph,
       loading: false,
     })
+    // У каждой сессии своя модель. Нет своей — вьюпорт остаётся пустым, а не
+    // показывает соседнюю.
+    useModel.getState().adopt(state.snapshot ?? null)
   },
 
   setQuery: (query) => set({ query }),

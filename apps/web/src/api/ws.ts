@@ -196,7 +196,11 @@ export class WsTransport implements Transport {
     return this.call('saveGraph', { sessionId, doc })
   }
 
-  pullModel(input?: { engine?: EngineId; instance?: string }): Promise<ModelSnapshot | null> {
+  pullModel(input?: {
+    engine?: EngineId
+    instance?: string
+    sessionId?: string
+  }): Promise<ModelSnapshot | null> {
     return this.call('pullModel', input ?? {})
   }
 
