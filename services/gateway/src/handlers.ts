@@ -10,12 +10,42 @@ import type {
   KnowledgeHit,
   ModelProvider,
 } from '@complex/protocol'
+import * as agents from './agents.ts'
 import { streamAnswer } from './chat.ts'
 import { config } from './config.ts'
 import { newId, nowIso } from './db/db.ts'
 import * as repo from './db/repo.ts'
 
 const USER = config.singleUserId
+
+/**
+ * Движки, которые проект знает в лицо. Порты — те, что слушают мосты по
+ * умолчанию: наш плагин SketchUp, сторонний rhinomcp и сторонний blender-mcp.
+ * Живые данные приходят от агента и перекрывают эти поля.
+ */
+const KNOWN_ENGINES: EngineDescriptor[] = [
+  {
+    id: 'rhino',
+    label: 'Rhinoceros',
+    status: 'offline',
+    port: 1999,
+    exports: ['3dm', 'obj', 'stl', 'step', 'glb', 'fbx', 'dae'],
+  },
+  {
+    id: 'sketchup',
+    label: 'SketchUp',
+    status: 'offline',
+    port: 8080,
+    exports: ['skp', 'obj', 'fbx', 'dae', 'stl'],
+  },
+  {
+    id: 'blender',
+    label: 'Blender',
+    status: 'offline',
+    port: 9876,
+    exports: ['glb', 'gltf', 'fbx', 'obj', 'stl', 'usd'],
+  },
+]
 
 /** Обычный вызов: параметры на входе, готовый ответ на выходе. */
 type Method = (params: Record<string, unknown>) => unknown
@@ -51,32 +81,17 @@ export const methods: Record<string, Method> = {
   saveGraph: (p) => repo.saveGraph(s(p.sessionId), p.doc as GraphDoc),
 
   /**
-   * Движки пока описываются статически: настоящие статусы появятся, когда
-   * подключится агент с машины пользователя и начнёт докладывать инвентарь.
+   * Движки: три известных нам всегда в списке, но их состояние берётся у
+   * подключённых агентов. Раньше здесь стояла константа `offline`, и панель
+   * движков показывала её независимо от того, что запущено на самом деле.
+   *
+   * Полный список нужен даже когда всё выключено: пользователь должен видеть,
+   * какие движки бывают, а не пустую панель.
    */
-  listEngines: (): EngineDescriptor[] => [
-    {
-      id: 'rhino',
-      label: 'Rhinoceros',
-      status: 'offline',
-      port: 9890,
-      exports: ['3dm', 'obj', 'stl', 'step', 'glb', 'fbx', 'dae'],
-    },
-    {
-      id: 'sketchup',
-      label: 'SketchUp',
-      status: 'offline',
-      port: 8080,
-      exports: ['skp', 'obj', 'fbx', 'dae', 'stl'],
-    },
-    {
-      id: 'blender',
-      label: 'Blender',
-      status: 'offline',
-      port: 9876,
-      exports: ['glb', 'gltf', 'fbx', 'obj', 'stl', 'usd'],
-    },
-  ],
+  listEngines: (): EngineDescriptor[] => {
+    const live = new Map(agents.listLiveEngines().map((engine) => [engine.id, engine]))
+    return KNOWN_ENGINES.map((known) => ({ ...known, ...(live.get(known.id) ?? {}) }))
+  },
 
   // Цены за миллион токенов сверены со списком OpenRouter 2026-07-26.
   listProviders: (): ModelProvider[] => [

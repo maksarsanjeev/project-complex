@@ -28,7 +28,7 @@ export interface EngineDescriptor {
   /** Отображаемое имя: SketchUp, Blender, Rhinoceros. */
   label: string
   status: EngineStatus
-  /** Порт локального моста: 8080 / 9876 / 9890. */
+  /** Порт локального моста: 8080 / 9876 / 1999. */
   port: number
   /** Версия приложения, о которой отчитался мост. */
   version?: string
@@ -36,6 +36,37 @@ export interface EngineDescriptor {
   exports: ExportFormat[]
   /** Последний успешный пинг моста. */
   lastSeen?: Timestamp
+  /**
+   * Открытые окна приложения. У SketchUp их бывает до десятка сразу, каждое со
+   * своей моделью и своим портом, поэтому движок — это не один адрес, а список.
+   */
+  instances?: EngineInstance[]
+  /**
+   * Машина, с которой доложили о движке. Агентов может быть несколько.
+   */
+  agent?: string
+}
+
+/**
+ * Одно запущенное окно приложения. Для SketchUp сведения берутся из «визитки»,
+ * которую плагин пишет о себе каждые две секунды.
+ */
+export interface EngineInstance {
+  /** Устойчивый идентификатор окна; переживает переоткрытие модели. */
+  id: string
+  /** Порт моста именно этого окна. */
+  port: number
+  /** Имя открытой модели — по нему пользователь и опознаёт окно. */
+  title?: string
+  /** Путь к файлу модели, если она сохранена. */
+  path?: string
+  /** Версия приложения. */
+  version?: string
+  /**
+   * Единица длины документа. У Rhino она произвольная, и это единственное
+   * место, где может незаметно возникнуть ошибка в тысячу раз.
+   */
+  units?: string
 }
 
 export type ExportFormat =
@@ -324,6 +355,47 @@ export type WireResponse =
   | { id: string; error: { message: string } }
   | { id: string; event: unknown }
   | { id: string; done: true }
+
+/* ────────────────────────────── агент на машине пользователя ────────────────────────────── */
+
+/**
+ * Движки живут не там, где gateway: SketchUp, Rhino и Blender стоят на рабочей
+ * машине, а gateway — на сервере. Связывает их агент, и связь эта устроена
+ * НАОБОРОТ привычному: соединение всегда исходящее от агента.
+ *
+ * Так на машине пользователя не открывается ни одного входящего порта, мосты
+ * остаются на 127.0.0.1, а файрвол не приходится трогать. Это не удобство, а
+ * необходимость: у моста SketchUp есть execute_ruby, у Rhino и Blender —
+ * выполнение произвольного кода. Открывать такое в сеть нельзя.
+ *
+ * Отдельный путь веб-сокета `/agent`, отдельный кадр — с веб-мордой у агента
+ * нет ничего общего, кроме соединения.
+ */
+export type AgentFrame =
+  /** Первый кадр: агент представляется и предъявляет токен. */
+  | { type: 'hello'; token: string; machine: string; version: string }
+  /** Что сейчас запущено на машине. Шлётся при изменениях, не по таймеру. */
+  | { type: 'inventory'; engines: EngineDescriptor[] }
+  /** Ответ на вызов; `id` совпадает с тем, что прислал gateway. */
+  | { type: 'result'; id: string; ok: true; result: unknown; durationMs: number }
+  | { type: 'result'; id: string; ok: false; error: string; durationMs: number }
+
+/** Кадры в обратную сторону: gateway просит агента что-то сделать. */
+export type GatewayFrame =
+  | { type: 'welcome'; agentId: string }
+  | { type: 'denied'; reason: string }
+  /**
+   * Вызов инструмента. `instance` указывает конкретное окно приложения; если
+   * не задан и окно единственное, агент выбирает его сам.
+   */
+  | {
+      type: 'invoke'
+      id: string
+      engine: EngineId
+      instance?: string
+      command: string
+      params: Record<string, unknown>
+    }
 
 /* ────────────────────────────── транспорт ────────────────────────────── */
 

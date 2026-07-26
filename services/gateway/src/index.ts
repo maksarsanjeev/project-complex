@@ -3,6 +3,7 @@ import { createReadStream, existsSync, statSync } from 'node:fs'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { extname, join, normalize, resolve } from 'node:path'
 import { WebSocketServer, type WebSocket } from 'ws'
+import { handleAgentSocket } from './agents.ts'
 import { config } from './config.ts'
 import { methods, streamMethods } from './handlers.ts'
 
@@ -91,7 +92,32 @@ const server = createServer((req, res) => {
   serveStatic(req, res)
 })
 
-const wss = new WebSocketServer({ server, path: '/ws' })
+// Два независимых пути: веб-морда и агенты с рабочих машин. Общего у них
+// только транспорт — кадры, правила и авторизация разные, поэтому и серверы
+// разные, а не один с ветвлением внутри.
+//
+// Развод по адресу делаем сами, с noServer. Если отдать обоим серверам общий
+// http-сервер и положиться на их собственный параметр path, то на каждое
+// подключение сработают ОБА обработчика, и тот, чей путь не совпал, оборвёт
+// рукопожатие раньше, чем до него доберётся нужный. Проверено: до исправления
+// не подключался никто, включая веб-морду.
+const wss = new WebSocketServer({ noServer: true })
+const agentWss = new WebSocketServer({ noServer: true })
+
+agentWss.on('connection', (socket) => handleAgentSocket(socket))
+
+server.on('upgrade', (req, socket, head) => {
+  const path = (req.url ?? '').split('?')[0]
+  const target = path === '/ws' ? wss : path === '/agent' ? agentWss : null
+
+  if (!target) {
+    socket.write('HTTP/1.1 404 Not Found\r\n\r\n')
+    socket.destroy()
+    return
+  }
+
+  target.handleUpgrade(req, socket, head, (ws) => target.emit('connection', ws, req))
+})
 
 wss.on('connection', (socket) => {
   log('клиент подключился')
@@ -115,4 +141,9 @@ server.listen(config.port, () => {
   log(`база: ${config.dbPath}`)
   log(`фронтенд: ${config.webRoot ?? 'не задан'}`)
   log(`модель: ${config.openRouterKey ? config.defaultModel : 'ключ не задан, ответы-заглушки'}`)
+  log(
+    config.agentToken
+      ? 'агенты: подключение открыто на /agent'
+      : 'агенты: AGENT_TOKEN не задан, подключения отклоняются',
+  )
 })

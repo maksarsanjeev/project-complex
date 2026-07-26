@@ -38,6 +38,11 @@ COPY --from=build /app/node_modules/ws ./node_modules/ws
 COPY --from=build /app/services/gateway/dist ./dist
 COPY --from=build /app/apps/web/dist         ./web
 
+# Доменные скрипты для Rhino: gateway читает их с диска и отправляет в движок
+# целиком. Держим настоящими файлами .py, а не строками внутри TypeScript, —
+# поэтому они и попадают в образ отдельно от собранного кода.
+COPY --from=build /app/engines/rhino/scripts ./engines/rhino/scripts
+
 # Работаем от непривилегированного пользователя, он есть в образе node.
 RUN mkdir -p /data && chown -R node:node /data /app
 USER node
