@@ -120,8 +120,16 @@ async function execute(frame: Extract<GatewayFrame, { type: 'invoke' }>): Promis
     return sketchup.call(chosen, frame.command, frame.params)
   }
 
+  // Окно не названо — берём отмеченное кнопкой «Окно для ИИ».
+  const active = sketchup.activeInstance(instances)
+  if (active) return sketchup.call(active, frame.command, frame.params)
+
   if (instances.length > 1) {
-    throw new Error(`открыто несколько окон SketchUp, укажи параметр instance. Открыты: ${listing()}`)
+    throw new Error(
+      'открыто несколько окон SketchUp, и ни одно не отмечено для работы. ' +
+        'Пусть пользователь нажмёт в нужном окне «Расширения → MCP Server → Окно для ИИ», ' +
+        `либо укажи параметр instance. Открыты: ${listing()}`,
+    )
   }
 
   const only = instances[0]

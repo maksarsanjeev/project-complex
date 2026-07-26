@@ -84,6 +84,19 @@ export function toWireTools(tools: ToolDef[]): WireTool[] {
     }
 
     const names = windows.map((w) => `«${w.title}»`).join(', ')
+    const active = windows.find((w) => w.active)
+
+    // Поле обязательно только пока человек не выбрал окно кнопкой в SketchUp.
+    // Выбрал — требовать нечего: у вызова есть точное умолчание, а назвать
+    // другое окно модель по-прежнему может, если её об этом попросили.
+    const description = active
+      ? `Окно SketchUp, в котором работать. Открыты: ${names}. ` +
+        `Не указывай, если пользователь не назвал окно: вызов уйдёт в «${active.title}», ` +
+        'которое он сам отметил кнопкой «Окно для ИИ».'
+      : `Окно SketchUp, в котором работать. Открыты: ${names}. ` +
+        'Пользователь ни одно из них не отметил кнопкой «Окно для ИИ», поэтому укажи имя окна. ' +
+        'Если он не сказал, в каком именно, — спроси, а не выбирай сам.'
+
     return {
       type: 'function',
       function: {
@@ -93,15 +106,11 @@ export function toWireTools(tools: ToolDef[]): WireTool[] {
           ...tool.parameters,
           properties: {
             ...tool.parameters.properties,
-            instance: {
-              type: 'string',
-              description:
-                `Окно SketchUp, в котором работать. Открыты: ${names}. ` +
-                'Указывай имя окна. Если пользователь не сказал, в каком окне работать, ' +
-                'спроси у него, а не выбирай сам.',
-            },
+            instance: { type: 'string', description },
           },
-          required: [...(tool.parameters.required ?? []), 'instance'],
+          required: active
+            ? (tool.parameters.required ?? [])
+            : [...(tool.parameters.required ?? []), 'instance'],
         },
       },
     }
@@ -125,7 +134,11 @@ export function engineSummary(): string {
   const lines = engines.map((engine) => {
     const where = engine.agent ? ` на машине ${engine.agent}` : ''
     const windows = (engine.instances ?? [])
-      .map((i) => `${i.title ?? 'без имени'} (порт ${i.port}${i.units ? `, ${i.units}` : ''})`)
+      .map(
+        (i) =>
+          `${i.title ?? 'без имени'} (порт ${i.port}${i.units ? `, ${i.units}` : ''}` +
+          `${i.active ? ', выбрано пользователем для работы' : ''})`,
+      )
       .join('; ')
 
     if (!unitsUsable(engine)) {

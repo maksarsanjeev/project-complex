@@ -37,10 +37,39 @@ interface Card {
   model_title?: string
   model_path?: string
   updated_at?: string
+  /** Когда в этом окне нажали «Окно для ИИ». Отсутствует — не нажимали. */
+  ai_target_at?: string | null
 }
 
-/** Читает визитки и возвращает живые окна SketchUp. */
+/**
+ * Читает визитки и возвращает живые окна SketchUp, отметив выбранное человеком.
+ *
+ * Выбор делается кнопкой «Окно для ИИ» в самом SketchUp. Если её нажали в
+ * нескольких окнах — а окна об этом друг другу сообщить не могут, это разные
+ * процессы, — берём то, где нажали позже. Отсюда и сравнение по времени.
+ */
 export async function discover(): Promise<EngineInstance[]> {
+  const found = await readCards()
+
+  let chosen: { index: number; at: number } | null = null
+  found.forEach((instance, index) => {
+    if (!instance.targetAt) return
+    const at = Date.parse(instance.targetAt)
+    if (!Number.isFinite(at)) return
+    if (!chosen || at > chosen.at) chosen = { index, at }
+  })
+
+  return found.map(({ pid: _pid, targetAt: _targetAt, ...rest }, index) =>
+    chosen && index === (chosen as { index: number }).index ? { ...rest, active: true } : rest,
+  )
+}
+
+/** Окно, выбранное человеком кнопкой в SketchUp. */
+export function activeInstance(instances: EngineInstance[]): EngineInstance | undefined {
+  return instances.find((i) => i.active)
+}
+
+async function readCards(): Promise<Array<EngineInstance & { pid?: number; targetAt?: string }>> {
   let names: string[]
   try {
     names = await readdir(INSTANCES_DIR)
@@ -49,7 +78,9 @@ export async function discover(): Promise<EngineInstance[]> {
   }
 
   const now = Date.now()
-  const found: EngineInstance[] = []
+  // pid и время нажатия наружу не отдаём: первое нужно только для отладки,
+  // второе — чтобы выбрать между окнами, и обе подробности умирают здесь.
+  const found: Array<EngineInstance & { pid?: number; targetAt?: string }> = []
 
   for (const name of names) {
     if (!name.startsWith('sketchup-') || !name.endsWith('.json')) continue
@@ -67,6 +98,8 @@ export async function discover(): Promise<EngineInstance[]> {
 
     found.push({
       id: card.instance_id ?? `pid-${card.pid ?? 0}`,
+      pid: card.pid,
+      targetAt: card.ai_target_at ?? undefined,
       port: card.port,
       title: card.model_title || 'Без имени',
       path: card.model_path,

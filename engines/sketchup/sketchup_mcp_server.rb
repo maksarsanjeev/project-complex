@@ -1,5 +1,5 @@
 # sketchup_mcp_server.rb
-# SketchUp MCP Bridge Plugin - v2.2
+# SketchUp MCP Bridge Plugin - v2.3
 #
 # Embeds a lightweight TCP/HTTP server inside SketchUp so that
 # an external MCP server (Python) can drive SketchUp programmatically.
@@ -33,6 +33,21 @@
 #   * живость экземпляра определяется по возрасту визитки, а не по PID:
 #     на Windows Process.kill(0, pid) рапортует «жив» для мёртвых процессов;
 #   * визитка убирается и при обычном закрытии SketchUp, а не только из меню.
+#
+# --- v2.3 -------------------------------------------------------------------
+#   * пункт меню «Окно для ИИ / Window for AI»: человек сам отмечает окно, в
+#     котором работает ИИ. Раньше при нескольких открытых окнах вызов падал с
+#     просьбой назвать окно — защита от постройки в чужом проекте была, а
+#     удобства не было.
+#
+#     Угадывать по окну переднего плана нельзя: пока человек пишет задание в
+#     браузере, впереди браузер, и признак не находит ни одного окна ровно
+#     тогда, когда он нужен.
+#
+#     Окна не договариваются между собой — на Windows это разные процессы, и
+#     общая у них только папка визиток. Поэтому окно не «забирает» признак у
+#     других, а лишь отмечает время нажатия; побеждает самое свежее, и решает
+#     это читающая сторона.
 
 require 'socket'
 require 'json'
@@ -224,6 +239,36 @@ module SU_MCP
     { model_title: nil, model_path: nil, model_guid: nil }
   end
 
+  # ---------------------------------------------------------------------------
+  # Окно для ИИ
+  #
+  # Когда открыто несколько окон, внешняя сторона не может решить, в каком из
+  # них работать. Угадывать нельзя: построить стену в чужом проекте — дорогая
+  # ошибка. Поэтому выбор делает человек кнопкой, а не мы за него.
+  #
+  # Договориться между окнами не получится: каждое окно SketchUp — отдельный
+  # процесс, общая у них только папка визиток. Поэтому окно не «забирает»
+  # признак у других, а лишь отмечает время нажатия. Побеждает самое свежее —
+  # эту проверку делает читающая сторона. Никакой межпроцессной связи не нужно.
+  # ---------------------------------------------------------------------------
+
+  @ai_target_at = nil
+
+  def self.ai_target?
+    !@ai_target_at.nil?
+  end
+
+  def self.toggle_ai_target
+    @ai_target_at = ai_target? ? nil : Time.now.utc
+    write_card # не ждём очередного тика: человек нажал и ждёт ответа сейчас
+    if ai_target?
+      Sketchup.status_text = "Это окно выбрано для ИИ: #{model_descriptor[:model_title]}"
+    else
+      Sketchup.status_text = 'Окно снято с работы ИИ'
+    end
+    ai_target?
+  end
+
   def self.instance_descriptor
     {
       instance_id: @instance_id,
@@ -232,7 +277,9 @@ module SU_MCP
       host:        '127.0.0.1',
       app:         'sketchup',
       app_version: (Sketchup.version.to_s rescue nil),
-      plugin:      '2.2'
+      plugin:      '2.3',
+      # Когда человек назначил это окно рабочим для ИИ. nil — не назначал.
+      ai_target_at: (@ai_target_at ? @ai_target_at.strftime('%Y-%m-%dT%H:%M:%SZ') : nil)
     }.merge(model_descriptor)
   end
 
@@ -1460,12 +1507,19 @@ module SU_MCP
   end
 
   unless file_loaded?(__FILE__)
-    log "Loading SketchUp MCP Plugin v2.2"
+    log "Loading SketchUp MCP Plugin v2.3"
     Sketchup.add_observer(AppWatcher.new) rescue nil
     at_exit { SU_MCP.remove_card rescue nil }
     log "Ruby #{RUBY_VERSION} | SketchUp #{Sketchup.version}"
 
     menu = UI.menu('Plugins').add_submenu('MCP Server')
+
+    # Главный пункт — первым: им пользуются каждый день, остальными почти никогда.
+    # Галочка показывает состояние, поэтому отдельного «где я работаю» не нужно.
+    target_item = menu.add_item('Окно для ИИ / Window for AI') { SU_MCP.toggle_ai_target }
+    menu.set_validation_proc(target_item) { SU_MCP.ai_target? ? MF_CHECKED : MF_UNCHECKED }
+
+    menu.add_separator
     menu.add_item('Start Server')   { SU_MCP.start_server }
     menu.add_item('Stop Server')    { SU_MCP.stop_server }
     menu.add_item('Restart Server') { SU_MCP.restart_server }
@@ -1476,7 +1530,8 @@ module SU_MCP
           "MCP Server RUNNING\n" \
           "порт: #{d[:port]}   pid: #{d[:pid]}\n" \
           "модель: #{d[:model_title]}\n" \
-          "экземпляр: #{d[:instance_id]}"
+          "экземпляр: #{d[:instance_id]}\n" \
+          "окно для ИИ: #{SU_MCP.ai_target? ? 'да' : 'нет'}"
         )
       else
         UI.messagebox("MCP Server is STOPPED")
