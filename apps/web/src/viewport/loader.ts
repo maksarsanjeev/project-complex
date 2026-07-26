@@ -49,9 +49,35 @@ function normalize(object: THREE.Object3D): THREE.Object3D {
   return root
 }
 
+/**
+ * Габарит загруженной модели в единицах сцены — по нему камера выбирает
+ * расстояние.
+ *
+ * Без него камера пользовалась зашитыми числами, годными для перетащенного
+ * файла: тот масштабируется под стандартный размер, и «примерно 60 на 30»
+ * работало. Снимок из движка не масштабируется намеренно — иначе миллиметры
+ * во вьюпорте перестали бы быть миллиметрами, — и модель высотой полтора метра
+ * оказывалась точкой в кадре, рассчитанном на башню.
+ */
+export interface ModelBounds {
+  height: number
+  radius: number
+}
+
+function measure(object: THREE.Object3D): ModelBounds {
+  const box = new THREE.Box3().setFromObject(object)
+  if (box.isEmpty()) return { height: 1, radius: 1 }
+  const size = box.getSize(new THREE.Vector3())
+  return {
+    height: Math.max(size.y, 0.001),
+    radius: Math.max(Math.hypot(size.x, size.z) / 2, 0.001),
+  }
+}
+
 interface LoadedState {
   object: THREE.Object3D | null
   name: string | null
+  bounds: ModelBounds | null
   loading: boolean
   error: string | null
   load: (file: File) => Promise<void>
@@ -70,6 +96,7 @@ interface LoadedState {
 export const useLoadedModel = create<LoadedState>()((set, get) => ({
   object: null,
   name: null,
+  bounds: null,
   loading: false,
   error: null,
 
@@ -78,7 +105,7 @@ export const useLoadedModel = create<LoadedState>()((set, get) => ({
     try {
       const object = normalize(await parse(file))
       get().object?.traverse(disposeNode)
-      set({ object, name: file.name, loading: false })
+      set({ object, name: file.name, bounds: measure(object), loading: false })
     } catch (error) {
       set({
         loading: false,
@@ -89,12 +116,12 @@ export const useLoadedModel = create<LoadedState>()((set, get) => ({
 
   setObject(object, name) {
     get().object?.traverse(disposeNode)
-    set({ object, name, loading: false, error: null })
+    set({ object, name, bounds: measure(object), loading: false, error: null })
   },
 
   clear() {
     get().object?.traverse(disposeNode)
-    set({ object: null, name: null, error: null })
+    set({ object: null, name: null, bounds: null, error: null })
   },
 }))
 

@@ -339,6 +339,7 @@ export function Scene() {
   const grid = useViewport((s) => s.grid)
   const gizmo = useViewport((s) => s.gizmo)
   const loaded = useLoadedModel((s) => s.object)
+  const bounds = useLoadedModel((s) => s.bounds)
   const pal = usePalette()
   const invalidate = useThree((s) => s.invalidate)
 
@@ -353,7 +354,17 @@ export function Scene() {
       ) : (
         <OrthographicCamera makeDefault near={-4000} far={8000} />
       )}
-      <CameraRig height={loaded ? 60 : height} radius={loaded ? 30 : radius} />
+      {/*
+        Габарит берём у самой модели, а не подставляем условные числа.
+        Раньше для загруженной модели стояло 60 на 30 — это подходило
+        перетащенному файлу, который вписывается в стандартный размер, но
+        снимок из движка приходит в НАСТОЯЩИХ миллиметрах, и коробка 300 мм
+        оказывалась точкой в кадре, рассчитанном на башню высотой 86 метров.
+      */}
+      <CameraRig
+        height={loaded ? (bounds?.height ?? 60) : height}
+        radius={loaded ? (bounds?.radius ?? 30) : radius}
+      />
       <SceneStats deps={loaded ?? params} />
 
       <ambientLight intensity={1.5} />
