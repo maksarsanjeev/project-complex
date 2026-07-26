@@ -1,6 +1,7 @@
 import { Eye, EyeOff, Lock, Unlock } from 'lucide-react'
 import { useMemo } from 'react'
 import { t } from '../i18n'
+import { useEngines } from '../store/engine'
 import { useViewport, type PartId } from '../store/viewport'
 import { useModel } from '../store/model'
 import { buildSceneTree, flatParts, treeFromSnapshot } from '../viewport/sceneTree'
@@ -25,9 +26,13 @@ export function Outliner() {
   // Есть снимок из движка — показываем его. Демо-башня остаётся для пустой
   // сессии, чтобы панель не выглядела сломанной, пока движок не подключён.
   const snapshot = useModel((m) => m.snapshot)
+  // Правило то же, что во вьюпорте: демо-башня существует только для движков
+  // с параметрикой. Иначе получалось расхождение — сцена пустая, а в дереве
+  // ядро жёсткости и диагрид, которых нигде нет.
+  const parametric = useEngines((e) => e.boundEngine) !== 'sketchup'
   const tree = useMemo(
-    () => (snapshot ? treeFromSnapshot(snapshot) : buildSceneTree(params)),
-    [snapshot, params],
+    () => (snapshot ? treeFromSnapshot(snapshot) : parametric ? buildSceneTree(params) : []),
+    [snapshot, parametric, params],
   )
 
   // Считаем и видимое, и всё: иначе цифра в шапке расходится со счётчиком
@@ -67,6 +72,7 @@ export function Outliner() {
       </div>
 
       <div className={s.scroll}>
+        {tree.length === 0 ? <Label tone="muted">{t('outliner.empty')}</Label> : null}
         {tree.map((layer) => {
           const ids = layer.parts.map((p) => p.id)
           const layerHidden = ids.every((id) => hidden[id])

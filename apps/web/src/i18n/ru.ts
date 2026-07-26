@@ -32,6 +32,7 @@ export const ru = {
 
   'outliner.visibility': 'видимость',
   'outliner.lock': 'блокировка',
+  'outliner.empty': 'сцена пуста — заберите модель из движка',
   'outliner.selectLayer': 'выделить весь слой',
   'outliner.polygons': 'полигонов',
   'outliner.hiddenOf': 'из',

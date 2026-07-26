@@ -116,9 +116,10 @@ function PartInspector() {
   // Ищем в том же дереве, что показывает аутлайнер, — иначе выделение
   // настоящей части не находилось бы среди демонстрационных.
   const snapshot = useModel((m) => m.snapshot)
+  const parametric = useEngines((e) => e.boundEngine) !== 'sketchup'
   const tree = useMemo(
-    () => (snapshot ? treeFromSnapshot(snapshot) : buildSceneTree(params)),
-    [snapshot, params],
+    () => (snapshot ? treeFromSnapshot(snapshot) : parametric ? buildSceneTree(params) : []),
+    [snapshot, parametric, params],
   )
   if (selected.length > 1) {
     // Разбирать по полям набор объектов бессмысленно — показываем состав.

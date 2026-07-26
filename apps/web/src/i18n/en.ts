@@ -31,6 +31,7 @@ export const en: Record<I18nKey, string> = {
 
   'outliner.visibility': 'visibility',
   'outliner.lock': 'lock',
+  'outliner.empty': 'scene is empty — pull the model from the engine',
   'outliner.selectLayer': 'select whole layer',
   'outliner.polygons': 'polygons',
   'outliner.hiddenOf': 'of',
