@@ -1,8 +1,6 @@
 import type { EngineId, ModelSnapshot, SceneNode } from '@complex/protocol'
-import * as THREE from 'three'
 import { create } from 'zustand'
 import { transport } from '../api/transport'
-import { useLoadedModel } from '../viewport/loader'
 
 /**
  * Настоящая модель из движка.
@@ -15,13 +13,25 @@ import { useLoadedModel } from '../viewport/loader'
  * по кнопке. Опрашивать движок постоянно нельзя — сборка меша идёт на главном
  * потоке SketchUp, и на тяжёлой сцене это дёргало бы интерфейс самого SketchUp
  * каждые несколько секунд.
+ *
+ * Здесь хранится только СНИМОК, без объектов three.js. Сцену из него строит
+ * вьюпорт обычными средствами r3f — иначе мимо модели проходят режимы
+ * отображения, выделение и видимость, которые живут в компонентах сцены.
  */
 
-/** Миллиметры сцены → единицы вьюпорта. Демо-башня живёт в тех же единицах. */
-const MM = 0.001
+/** Миллиметры снимка → единицы сцены. Демо-башня живёт в тех же единицах. */
+export const MM = 0.001
+
+/** Габарит для камеры — уже в единицах сцены и в её системе координат. */
+export interface SnapshotBounds {
+  height: number
+  radius: number
+  center: [number, number, number]
+}
 
 interface ModelState {
   snapshot: ModelSnapshot | null
+  bounds: SnapshotBounds | null
   loading: boolean
   error: string | null
   /** Забрать модель из движка. Тихо ничего не делает, если движок не запущен. */
@@ -31,6 +41,7 @@ interface ModelState {
 
 export const useModel = create<ModelState>()((set) => ({
   snapshot: null,
+  bounds: null,
   loading: false,
   error: null,
 
@@ -38,14 +49,12 @@ export const useModel = create<ModelState>()((set) => ({
     set({ loading: true, error: null })
     try {
       const snapshot = await transport.pullModel({ engine })
-      if (!snapshot) {
-        // Движок не запущен — это не ошибка, а обычное состояние.
-        set({ snapshot: null, loading: false })
-        useLoadedModel.getState().clear()
-        return
-      }
-      useLoadedModel.getState().setObject(buildObject(snapshot), snapshot.title)
-      set({ snapshot, loading: false })
+      // Движок не запущен — это не ошибка, а обычное состояние.
+      set({
+        snapshot,
+        bounds: snapshot ? measure(snapshot) : null,
+        loading: false,
+      })
     } catch (error) {
       set({
         loading: false,
@@ -55,43 +64,52 @@ export const useModel = create<ModelState>()((set) => ({
   },
 
   clear() {
-    useLoadedModel.getState().clear()
-    set({ snapshot: null, error: null })
+    set({ snapshot: null, bounds: null, error: null })
   },
 }))
 
 /**
- * Собирает объект three.js из снимка.
+ * Габаритная коробка снимка, пересчитанная в систему координат сцены.
  *
- * Одна часть — один узел дерева, поэтому спрятать группу в аутлайнере можно
- * будет по имени объекта, не пересобирая геометрию.
+ * У SketchUp вверх смотрит Z, у three.js — Y, поэтому сцена поворачивается на
+ * −90° вокруг X. Тот же поворот применяем и к габариту: иначе камера считала бы
+ * высотой глубину модели и наводилась мимо.
  */
-function buildObject(snapshot: ModelSnapshot): THREE.Object3D {
-  const root = new THREE.Group()
-  root.name = 'модель'
+function measure(snapshot: ModelSnapshot): SnapshotBounds {
+  let minX = Infinity, minY = Infinity, minZ = Infinity
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity
 
   for (const part of snapshot.parts) {
-    const geometry = new THREE.BufferGeometry()
-    // Координаты приходят в миллиметрах: масштабируем один раз здесь, чтобы
-    // дальше по сцене везде были одни и те же единицы.
-    const positions = Float32Array.from(part.positions, (v) => v * MM)
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-    if (part.normals.length === part.positions.length) {
-      geometry.setAttribute('normal', new THREE.Float32BufferAttribute(part.normals, 3))
-    } else {
-      geometry.computeVertexNormals()
+    const p = part.positions
+    for (let i = 0; i < p.length; i += 3) {
+      const x = p[i] as number
+      const y = p[i + 1] as number
+      const z = p[i + 2] as number
+      if (x < minX) minX = x
+      if (y < minY) minY = y
+      if (z < minZ) minZ = z
+      if (x > maxX) maxX = x
+      if (y > maxY) maxY = y
+      if (z > maxZ) maxZ = z
     }
-    geometry.computeBoundingSphere()
-
-    const mesh = new THREE.Mesh(geometry)
-    mesh.name = part.nodeId
-    mesh.userData.layer = part.layer
-    root.add(mesh)
   }
 
-  // SketchUp считает Z вверх, three.js — Y. Без поворота модель лежит на боку.
-  root.rotation.x = -Math.PI / 2
-  return root
+  if (!Number.isFinite(minX)) return { height: 1, radius: 1, center: [0, 0, 0] }
+
+  const sx = (maxX - minX) * MM
+  const sy = (maxY - minY) * MM
+  const sz = (maxZ - minZ) * MM
+  const cx = ((minX + maxX) / 2) * MM
+  const cy = ((minY + maxY) / 2) * MM
+  const cz = ((minZ + maxZ) / 2) * MM
+
+  return {
+    // Вверх в сцене — это Z модели.
+    height: Math.max(sz, 0.001),
+    radius: Math.max(Math.hypot(sx, sy) / 2, 0.001),
+    // Поворот на −90° вокруг X: (x, y, z) → (x, z, −y).
+    center: [cx, cz, -cy],
+  }
 }
 
 /** Дерево из снимка — в том же виде, что ждёт аутлайнер. */

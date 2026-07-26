@@ -13,6 +13,7 @@ import {
   towerHeight,
   towerRing,
 } from './geometry'
+import { MM as SCENE_MM, useModel } from '../store/model'
 import { useLoadedModel } from './loader'
 
 /* ────────────────────────── палитра сцены ────────────────────────── */
@@ -215,6 +216,81 @@ function SceneStats({ deps }: { deps: unknown }) {
   return null
 }
 
+/* ────────────────────────── модель из движка ────────────────────────── */
+
+/**
+ * Слой определяет вид поверхности. Стекло рисуется прозрачным — как и у
+ * демо-башни, где слои тоже названы по материалу.
+ */
+function toneForLayer(layer: string): Tone {
+  const name = layer.toLowerCase()
+  if (name.includes('стекл') || name.includes('glass')) return 'glass'
+  if (name.includes('метал') || name.includes('желез') || name.includes('steel')) return 'alt'
+  return 'base'
+}
+
+/**
+ * Настоящая модель из движка.
+ *
+ * Собирается обычными узлами сцены, а НЕ подставляется готовым объектом
+ * three.js. Разница принципиальная: подставленный объект проходит мимо
+ * материалов, обработчиков клика и флагов видимости — режимы отображения на
+ * него не действуют, выделить нельзя, погасить из аутлайнера нельзя. Именно
+ * так и оказалось при первой попытке.
+ *
+ * Поворот на −90° вокруг X: у SketchUp вверх смотрит Z, у three.js — Y.
+ */
+function RealModel() {
+  const snapshot = useModel((s) => s.snapshot)
+  const selected = useViewport((s) => s.selected)
+  const select = useViewport((s) => s.select)
+  const hidden = useViewport((s) => s.hidden)
+  const locked = useViewport((s) => s.locked)
+
+  // Геометрию пересобираем только при новом снимке: переключение режима
+  // отображения или видимости не должно трогать буферы.
+  const parts = useMemo(() => {
+    if (!snapshot) return []
+    return snapshot.parts.map((part) => {
+      const geometry = new THREE.BufferGeometry()
+      const positions = Float32Array.from(part.positions, (v) => v * SCENE_MM)
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+      if (part.normals.length === part.positions.length) {
+        geometry.setAttribute('normal', new THREE.Float32BufferAttribute(part.normals, 3))
+      } else {
+        geometry.computeVertexNormals()
+      }
+      geometry.computeBoundingSphere()
+      return { id: part.nodeId, layer: part.layer, geometry }
+    })
+  }, [snapshot])
+
+  useEffect(() => () => parts.forEach((p) => p.geometry.dispose()), [parts])
+
+  if (!snapshot) return null
+
+  return (
+    <group rotation={[-Math.PI / 2, 0, 0]}>
+      {parts.map((part) => (
+        <mesh
+          key={part.id}
+          name={part.id}
+          geometry={part.geometry}
+          visible={!hidden[part.id]}
+          onClick={(event: ThreeEvent<MouseEvent>) => {
+            event.stopPropagation()
+            // Заблокированную часть не выделяем — так же, как у башни.
+            if (locked[part.id]) return
+            select(selected === part.id ? null : part.id)
+          }}
+        >
+          <SurfaceMaterial tone={toneForLayer(part.layer)} active={selected === part.id} />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
 /* ────────────────────────── башня ────────────────────────── */
 
 function Tower() {
@@ -349,6 +425,8 @@ export function Scene() {
   const gizmo = useViewport((s) => s.gizmo)
   const loaded = useLoadedModel((s) => s.object)
   const bounds = useLoadedModel((s) => s.bounds)
+  const snapshot = useModel((s) => s.snapshot)
+  const snapBounds = useModel((s) => s.bounds)
   const pal = usePalette()
   const invalidate = useThree((s) => s.invalidate)
 
@@ -371,11 +449,17 @@ export function Scene() {
         оказывалась точкой в кадре, рассчитанном на башню высотой 86 метров.
       */}
       <CameraRig
-        height={loaded ? (bounds?.height ?? 60) : height}
-        radius={loaded ? (bounds?.radius ?? 30) : radius}
-        center={loaded ? bounds?.center : undefined}
+        height={loaded ? (bounds?.height ?? 60) : (snapBounds?.height ?? height)}
+        radius={loaded ? (bounds?.radius ?? 30) : (snapBounds?.radius ?? radius)}
+        center={
+          loaded
+            ? bounds?.center
+            : snapBounds
+              ? new THREE.Vector3(...snapBounds.center)
+              : undefined
+        }
       />
-      <SceneStats deps={loaded ?? params} />
+      <SceneStats deps={loaded ?? snapshot ?? params} />
 
       <ambientLight intensity={1.5} />
       <directionalLight position={[40, 80, 30]} intensity={2.2} />
@@ -398,7 +482,8 @@ export function Scene() {
         />
       ) : null}
 
-      {loaded ? <primitive object={loaded} /> : <Tower />}
+      {/* Порядок важен: перетащенный файл перекрывает снимок, снимок — демо-башню. */}
+      {loaded ? <primitive object={loaded} /> : snapshot ? <RealModel /> : <Tower />}
 
       {/*
         Вьюпорт рисует по требованию, поэтому каждое движение камеры обязано само

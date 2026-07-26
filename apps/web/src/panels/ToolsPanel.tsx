@@ -23,7 +23,7 @@ import { useModel } from '../store/model'
 import { useSession } from '../store/session'
 import { useViewport } from '../store/viewport'
 import { IdChip, Label, NumField, Section, StatusMark, type MarkState } from '../ui'
-import { buildSceneTree, findPart, isParamLocked } from '../viewport/sceneTree'
+import { buildSceneTree, findPart, isParamLocked, treeFromSnapshot } from '../viewport/sceneTree'
 import { ParamField } from './ParamField'
 import s from './panels.module.css'
 
@@ -113,7 +113,13 @@ function NodeInspector() {
 function PartInspector() {
   const params = useViewport((v) => v.params)
   const selected = useViewport((v) => v.selected)
-  const tree = useMemo(() => buildSceneTree(params), [params])
+  // Ищем в том же дереве, что показывает аутлайнер, — иначе выделение
+  // настоящей части не находилось бы среди демонстрационных.
+  const snapshot = useModel((m) => m.snapshot)
+  const tree = useMemo(
+    () => (snapshot ? treeFromSnapshot(snapshot) : buildSceneTree(params)),
+    [snapshot, params],
+  )
   const found = selected ? findPart(tree, selected) : null
 
   if (!found) return <Label>{t('inspect.empty')}</Label>
@@ -137,9 +143,12 @@ function PartInspector() {
       </div>
       <div className={s.kv}>
         <Label>{t('inspect.size')}</Label>
+        {/* Снимок из движка габарит не приносит. Нули вместо размера были бы
+            прямой ложью, поэтому показываем прочерк. */}
         <span className={s.kvValue}>
-          {x.toLocaleString('ru-RU')} × {y.toLocaleString('ru-RU')} × {z.toLocaleString('ru-RU')}{' '}
-          {t('common.mm')}
+          {x || y || z
+            ? `${x.toLocaleString('ru-RU')} × ${y.toLocaleString('ru-RU')} × ${z.toLocaleString('ru-RU')} ${t('common.mm')}`
+            : '—'}
         </span>
       </div>
       <div className={s.kv}>

@@ -5,6 +5,7 @@ import { t } from '../i18n'
 import { useViewport, type DisplayMode, type Projection } from '../store/viewport'
 import { IconButton, Label, Segmented, type SegmentedOption } from '../ui'
 import { Scene } from './Scene'
+import { useModel } from '../store/model'
 import { useLoadedModel } from './loader'
 import s from './Viewport.module.css'
 
@@ -32,9 +33,18 @@ export function ViewportToolbar() {
   const toggleGizmo = useViewport((v) => v.toggleGizmo)
   const fit = useViewport((v) => v.fit)
 
-  const name = useLoadedModel((l) => l.name)
-  const error = useLoadedModel((l) => l.error)
-  const clear = useLoadedModel((l) => l.clear)
+  // Чип показывает то, что сейчас в кадре: перетащенный файл либо снимок
+  // из движка. Крестик у снимка возвращает демо-башню, у файла — тоже.
+  const fileName = useLoadedModel((l) => l.name)
+  const fileError = useLoadedModel((l) => l.error)
+  const clearFile = useLoadedModel((l) => l.clear)
+  const snapshot = useModel((m) => m.snapshot)
+  const modelError = useModel((m) => m.error)
+  const clearModel = useModel((m) => m.clear)
+
+  const name = fileName ?? snapshot?.title ?? null
+  const error = fileError ?? modelError
+  const clear = fileName ? clearFile : clearModel
 
   return (
     <div className={s.toolbar}>
