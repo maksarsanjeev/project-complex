@@ -1,7 +1,7 @@
 import type { ChatMessage, ProviderTransport, SelectionRef } from '@complex/protocol'
 import { create } from 'zustand'
 import { transport } from '../api/transport'
-import { useModel } from './model'
+import { mergedNodes, useModel } from './model'
 import { useViewport } from './viewport'
 import { useSession } from './session'
 
@@ -90,14 +90,15 @@ function currentSelection(): SelectionRef[] | undefined {
   const ids = useViewport.getState().selected
   if (!ids.length) return undefined
 
-  const snapshot = useModel.getState().snapshot
-  if (!snapshot) return undefined
+  const snapshots = useModel.getState().snapshots
+  if (!snapshots.length) return undefined
 
+  const nodes = mergedNodes(snapshots)
   const refs = ids
-    .map((id) => snapshot.nodes.find((n) => n.id === id))
+    .map((id) => nodes.find((n) => n.id === id))
     .filter((node): node is NonNullable<typeof node> => Boolean(node))
     .map((node) => {
-      const parent = snapshot.nodes.find((n) => n.id === node.parentId)
+      const parent = nodes.find((n) => n.id === node.parentId)
       return {
         id: node.id,
         name: node.name,

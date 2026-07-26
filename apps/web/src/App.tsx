@@ -46,7 +46,7 @@ export default function App() {
     let last = ''
     return useViewport.subscribe((state) => {
       // Отражать нечего, пока модель не забрана: узлы движку неизвестны.
-      if (!useModel.getState().snapshot) return
+      if (!useModel.getState().snapshots.length) return
       const key = state.selected.join(',')
       if (key === last) return
       last = key

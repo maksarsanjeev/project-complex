@@ -242,7 +242,7 @@ function toneForLayer(layer: string): Tone {
  * Поворот на −90° вокруг X: у SketchUp вверх смотрит Z, у three.js — Y.
  */
 function RealModel() {
-  const snapshot = useModel((s) => s.snapshot)
+  const snapshots = useModel((s) => s.snapshots)
   const selected = useViewport((s) => s.selected)
   const select = useViewport((s) => s.select)
   const hidden = useViewport((s) => s.hidden)
@@ -251,8 +251,9 @@ function RealModel() {
   // Геометрию пересобираем только при новом снимке: переключение режима
   // отображения или видимости не должно трогать буферы.
   const parts = useMemo(() => {
-    if (!snapshot) return []
-    return snapshot.parts.map((part) => {
+    // Геометрия всех движков сразу: проект открыт в нескольких приложениях, и
+    // вьюпорт показывает его целиком, а не по одному.
+    return snapshots.flatMap((snapshot) => snapshot.parts).map((part) => {
       const geometry = new THREE.BufferGeometry()
       const positions = Float32Array.from(part.positions, (v) => v * SCENE_MM)
       geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
@@ -264,11 +265,11 @@ function RealModel() {
       geometry.computeBoundingSphere()
       return { id: part.nodeId, layer: part.layer, geometry }
     })
-  }, [snapshot])
+  }, [snapshots])
 
   useEffect(() => () => parts.forEach((p) => p.geometry.dispose()), [parts])
 
-  if (!snapshot) return null
+  if (!parts.length) return null
 
   return (
     <group rotation={[-Math.PI / 2, 0, 0]}>
@@ -427,7 +428,7 @@ export function Scene() {
   const gizmo = useViewport((s) => s.gizmo)
   const loaded = useLoadedModel((s) => s.object)
   const bounds = useLoadedModel((s) => s.bounds)
-  const snapshot = useModel((s) => s.snapshot)
+  const snapshots = useModel((s) => s.snapshots)
   const snapBounds = useModel((s) => s.bounds)
   // Параметрика есть у Rhino и Blender; в SketchUp её нет, и демо-башне там
   // взяться неоткуда.
@@ -464,7 +465,7 @@ export function Scene() {
               : undefined
         }
       />
-      <SceneStats deps={loaded ?? snapshot ?? params} />
+      <SceneStats deps={loaded ?? snapshots ?? params} />
 
       <ambientLight intensity={1.5} />
       <directionalLight position={[40, 80, 30]} intensity={2.2} />
@@ -497,7 +498,7 @@ export function Scene() {
       */}
       {loaded ? (
         <primitive object={loaded} />
-      ) : snapshot ? (
+      ) : snapshots.length ? (
         <RealModel />
       ) : parametric ? (
         <Tower />

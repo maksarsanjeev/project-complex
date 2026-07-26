@@ -58,7 +58,7 @@ export const useSession = create<SessionState>()((set, get) => ({
     set({ loading: true, activeId: id, selectedNodeId: null })
     // Модель предыдущей сессии убираем СРАЗУ, не дожидаясь ответа сервера:
     // иначе на время загрузки в новом проекте висит чужая геометрия.
-    useModel.getState().adopt(null)
+    useModel.getState().adopt([])
     const state = await transport.openSession(id)
     set({
       activeId: state.session.id,
@@ -68,7 +68,7 @@ export const useSession = create<SessionState>()((set, get) => ({
     })
     // У каждой сессии своя модель. Нет своей — вьюпорт остаётся пустым, а не
     // показывает соседнюю.
-    useModel.getState().adopt(state.snapshot ?? null)
+    useModel.getState().adopt(state.snapshots ?? [])
   },
 
   setQuery: (query) => set({ query }),

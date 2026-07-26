@@ -38,11 +38,13 @@ export function ViewportToolbar() {
   const fileName = useLoadedModel((l) => l.name)
   const fileError = useLoadedModel((l) => l.error)
   const clearFile = useLoadedModel((l) => l.clear)
-  const snapshot = useModel((m) => m.snapshot)
+  const snapshots = useModel((m) => m.snapshots)
   const modelError = useModel((m) => m.error)
   const clearModel = useModel((m) => m.clear)
 
-  const name = fileName ?? snapshot?.title ?? null
+  // Проект бывает открыт сразу в нескольких движках — перечисляем их имена,
+  // а не показываем одно и делаем вид, что оно единственное.
+  const name = fileName ?? (snapshots.length ? snapshots.map((x) => x.title).join(' · ') : null)
   const error = fileError ?? modelError
   const clear = fileName ? clearFile : clearModel
 

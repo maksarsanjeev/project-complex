@@ -75,10 +75,14 @@ CREATE TABLE IF NOT EXISTS graphs (
 -- Строка на сессию, а не история: нужен последний вид, а не архив. Без этой
 -- таблицы снимок был один на всё приложение, и новый проект показывал модель
 -- предыдущего — сессии отличались только перепиской.
+-- Ключ составной: один проект бывает открыт сразу в SketchUp, Rhino и
+-- Blender, и снимок у каждого свой. В дереве они станут тремя ветками.
 CREATE TABLE IF NOT EXISTS snapshots (
-  session_id  TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+  session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  engine      TEXT NOT NULL,
   doc         TEXT NOT NULL,
-  taken_at    TEXT NOT NULL
+  taken_at    TEXT NOT NULL,
+  PRIMARY KEY (session_id, engine)
 );
 
 CREATE TABLE IF NOT EXISTS jobs (

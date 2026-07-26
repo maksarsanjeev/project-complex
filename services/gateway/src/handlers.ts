@@ -49,6 +49,40 @@ const KNOWN_ENGINES: EngineDescriptor[] = [
   },
 ]
 
+/**
+ * Приставка движка к идентификаторам узлов: `su:ent:43725`.
+ *
+ * Один проект бывает открыт сразу в трёх приложениях, а номера объектов у всех
+ * свои и начинаются с малых чисел — без приставки они бы столкнулись, и клик
+ * по группе SketchUp выделял бы слой Rhino. Делается здесь, а не в веб-морде:
+ * дальше по системе идентификатор уже уникален, и думать о движке не нужно.
+ */
+const PREFIX: Record<EngineId, string> = { sketchup: 'su', rhino: 'rh', blender: 'bl' }
+
+function namespace(snapshot: ModelSnapshot, engine: EngineId): ModelSnapshot {
+  const p = PREFIX[engine]
+  const id = (raw: string): string => `${p}:${raw}`
+
+  return {
+    ...snapshot,
+    nodes: snapshot.nodes.map((node) => ({
+      ...node,
+      id: id(node.id),
+      parentId: node.parentId ? id(node.parentId) : null,
+      engine,
+    })),
+    parts: snapshot.parts.map((part) => ({ ...part, nodeId: id(part.nodeId) })),
+    selection: snapshot.selection?.map(id),
+  }
+}
+
+/** Обратно: из `su:ent:43725` в движок и его собственный идентификатор. */
+function denamespace(nodeId: string): { engine: EngineId; id: string } | null {
+  const [prefix, ...rest] = nodeId.split(':')
+  const engine = (Object.keys(PREFIX) as EngineId[]).find((e) => PREFIX[e] === prefix)
+  return engine ? { engine, id: rest.join(':') } : null
+}
+
 /** Обычный вызов: параметры на входе, готовый ответ на выходе. */
 type Method = (params: Record<string, unknown>) => unknown
 
@@ -158,7 +192,10 @@ export const methods: Record<string, Method> = {
       params: {},
     })) as Omit<ModelSnapshot, 'engine' | 'instance' | 'takenAt'>
 
-    const snapshot: ModelSnapshot = { ...raw, engine, instance, takenAt: nowIso() }
+    const snapshot: ModelSnapshot = namespace(
+      { ...raw, engine, instance, takenAt: nowIso() },
+      engine,
+    )
 
     // Кладём снимок в ту сессию, в которой работали. Иначе он один на всё
     // приложение, и открыв другой проект, человек видит чужую модель.
@@ -176,19 +213,29 @@ export const methods: Record<string, Method> = {
    * это давало прямо противоречивые ответы.
    */
   setSelection: async (p): Promise<{ ok: boolean }> => {
-    const engine = (s(p.engine) || 'sketchup') as EngineId
-    if (!agents.isOnline(engine)) return { ok: false }
+    // Движок определяется по самим идентификаторам: выделение может лежать в
+    // любой ветке дерева, и указывать его отдельно было бы лишним поводом
+    // ошибиться. Разные движки разводим по своим вызовам.
+    const byEngine = new Map<EngineId, number[]>()
+    for (const raw of Array.isArray(p.ids) ? p.ids : []) {
+      const parsed = denamespace(String(raw))
+      if (!parsed) continue
+      const numeric = Number(parsed.id.replace(/^ent:/, ''))
+      if (!Number.isFinite(numeric)) continue
+      byEngine.set(parsed.engine, [...(byEngine.get(parsed.engine) ?? []), numeric])
+    }
 
-    // Наружу узлы зовутся `ent:43725`, движку нужно только число.
-    const ids = (Array.isArray(p.ids) ? p.ids : [])
-      .map((id) => Number(String(id).replace(/^ent:/, '')))
-      .filter((id) => Number.isFinite(id))
-
-    await agents.invoke({
-      engine,
-      command: 'POST /model/selection',
-      params: { entity_ids: ids },
-    })
+    // Движкам без выделения тоже сообщаем — иначе там останется старая подсветка.
+    for (const engine of Object.keys(PREFIX) as EngineId[]) {
+      if (!agents.isOnline(engine)) continue
+      const ids = byEngine.get(engine) ?? []
+      if (!ids.length && !byEngine.size) continue
+      await agents.invoke({
+        engine,
+        command: 'POST /model/selection',
+        params: { entity_ids: ids },
+      })
+    }
     return { ok: true }
   },
 
@@ -197,17 +244,21 @@ export const methods: Record<string, Method> = {
    * оказаться в самом приложении — иначе список и модель разъедутся.
    */
   renameObject: async (p): Promise<{ nodeId: string; grouped: boolean } | null> => {
-    const engine = (s(p.engine) || 'sketchup') as EngineId
-    if (!agents.isOnline(engine)) return null
+    const parsed = denamespace(s(p.nodeId))
+    if (!parsed) throw new Error(`непонятный идентификатор узла: ${s(p.nodeId)}`)
+    if (!agents.isOnline(parsed.engine)) return null
 
     const raw = (await agents.invoke({
-      engine,
+      engine: parsed.engine,
       command: 'POST /model/rename',
-      params: { node_id: s(p.nodeId), name: s(p.name) },
+      params: { node_id: parsed.id, name: s(p.name) },
     })) as { node_id?: string; grouped?: boolean; confirmed?: boolean }
 
     if (raw.confirmed === false) throw new Error('движок не подтвердил новое имя')
-    return { nodeId: s(raw.node_id), grouped: Boolean(raw.grouped) }
+    return {
+      nodeId: `${PREFIX[parsed.engine]}:${s(raw.node_id)}`,
+      grouped: Boolean(raw.grouped),
+    }
   },
 
   /** База знаний — отдельный этап; пока честно отдаём пустоту. */

@@ -5,7 +5,7 @@ import { t } from '../i18n'
 import { useEngines } from '../store/engine'
 import { useModel } from '../store/model'
 import { useViewport, type PartId } from '../store/viewport'
-import { rowsFromSnapshot, rowsFromTower, type SceneRow } from '../viewport/sceneTree'
+import { rowsFromSnapshots, rowsFromTower, type SceneRow } from '../viewport/sceneTree'
 import { IconButton, Label } from '../ui'
 import s from './panels.module.css'
 
@@ -30,7 +30,7 @@ export function Outliner() {
   const select = useViewport((v) => v.select)
   const selectMany = useViewport((v) => v.selectMany)
 
-  const snapshot = useModel((m) => m.snapshot)
+  const snapshots = useModel((m) => m.snapshots)
   const pull = useModel((m) => m.pull)
   const [editing, setEditing] = useState<string | null>(null)
 
@@ -40,8 +40,8 @@ export function Outliner() {
   const parametric = useEngines((e) => e.boundEngine) !== 'sketchup'
 
   const rows = useMemo(
-    () => (snapshot ? rowsFromSnapshot(snapshot) : parametric ? rowsFromTower(params) : []),
-    [snapshot, parametric, params],
+    () => (snapshots.length ? rowsFromSnapshots(snapshots) : parametric ? rowsFromTower(params) : []),
+    [snapshots, parametric, params],
   )
 
   const { visible, total } = useMemo(

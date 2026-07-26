@@ -32,19 +32,23 @@ export interface SnapshotBounds {
 }
 
 interface ModelState {
-  snapshot: ModelSnapshot | null
+  /**
+   * Снимки по движкам. Один проект бывает открыт сразу в SketchUp, Rhino и
+   * Blender — в дереве они станут тремя ветками верхнего уровня.
+   */
+  snapshots: ModelSnapshot[]
   bounds: SnapshotBounds | null
   loading: boolean
   error: string | null
   /** Забрать модель из движка. Тихо ничего не делает, если движок не запущен. */
   pull: (engine?: EngineId) => Promise<void>
-  /** Показать готовый снимок — им пользуется переключение сессий. */
-  adopt: (snapshot: ModelSnapshot | null) => void
+  /** Показать готовые снимки — ими пользуется переключение сессий. */
+  adopt: (snapshots: ModelSnapshot[]) => void
   clear: () => void
 }
 
 export const useModel = create<ModelState>()((set) => ({
-  snapshot: null,
+  snapshots: [],
   bounds: null,
   loading: false,
   error: null,
@@ -55,20 +59,21 @@ export const useModel = create<ModelState>()((set) => ({
       // Снимок принадлежит сессии, в которой работали, — сервер его туда и
       // положит, чтобы при возврате к проекту модель была на месте.
       const sessionId = useSession.getState().activeId ?? undefined
-      const snapshot = await transport.pullModel({ engine, sessionId })
-      // Движок не запущен — это не ошибка, а обычное состояние.
-      set({
-        snapshot,
-        bounds: snapshot ? measure(snapshot) : null,
-        loading: false,
+      const fresh = await transport.pullModel({ engine, sessionId })
+      // Движок не запущен — это не ошибка, а обычное состояние: просто у этой
+      // ветки дерева нечего показать, остальные остаются на месте.
+      set((state) => {
+        const rest = state.snapshots.filter((x) => x.engine !== engine)
+        const snapshots = fresh ? [...rest, fresh] : rest
+        return { snapshots, bounds: measure(snapshots), loading: false }
       })
 
       // Выделение, сделанное руками в самом приложении, подхватываем в
       // интерфейс. Иначе человек выделяет в SketchUp, спрашивает «что я
       // выделил» — и получает ответ про другое выделение.
-      if (snapshot?.selection?.length) {
-        const known = new Set(snapshot.nodes.map((n) => n.id))
-        const ids = snapshot.selection.filter((id) => known.has(id))
+      if (fresh?.selection?.length) {
+        const known = new Set(fresh.nodes.map((n) => n.id))
+        const ids = fresh.selection.filter((id) => known.has(id))
         if (ids.length) useViewport.getState().selectMany(ids)
       }
     } catch (error) {
@@ -79,15 +84,15 @@ export const useModel = create<ModelState>()((set) => ({
     }
   },
 
-  adopt(snapshot) {
+  adopt(snapshots) {
     // Выделение принадлежит модели: при смене проекта оно теряет смысл.
     useViewport.getState().select(null)
-    set({ snapshot, bounds: snapshot ? measure(snapshot) : null, error: null })
+    set({ snapshots, bounds: measure(snapshots), error: null })
   },
 
   clear() {
     useViewport.getState().select(null)
-    set({ snapshot: null, bounds: null, error: null })
+    set({ snapshots: [], bounds: null, error: null })
   },
 }))
 
@@ -98,11 +103,15 @@ export const useModel = create<ModelState>()((set) => ({
  * −90° вокруг X. Тот же поворот применяем и к габариту: иначе камера считала бы
  * высотой глубину модели и наводилась мимо.
  */
-function measure(snapshot: ModelSnapshot): SnapshotBounds {
+function measure(snapshots: ModelSnapshot[]): SnapshotBounds | null {
+  if (!snapshots.length) return null
+
   let minX = Infinity, minY = Infinity, minZ = Infinity
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity
 
-  for (const part of snapshot.parts) {
+  // Габарит по ВСЕМ движкам сразу: камера должна вписать проект целиком, а не
+  // одну его часть.
+  for (const part of snapshots.flatMap((x) => x.parts)) {
     const p = part.positions
     for (let i = 0; i < p.length; i += 3) {
       const x = p[i] as number
@@ -135,7 +144,32 @@ function measure(snapshot: ModelSnapshot): SnapshotBounds {
   }
 }
 
-/** Дерево из снимка — в том же виде, что ждёт аутлайнер. */
-export function snapshotTree(snapshot: ModelSnapshot | null): SceneNode[] {
-  return snapshot?.nodes ?? []
+/**
+ * Названия движков для корневых веток дерева. Берём те же слова, что в панели
+ * движков, — человек не должен гадать, «Rhino» и «Rhinoceros» это одно и то же.
+ */
+export const ENGINE_LABEL: Record<EngineId, string> = {
+  sketchup: 'SketchUp',
+  rhino: 'Rhinoceros',
+  blender: 'Blender',
+}
+
+/** Все узлы всех движков плюс корни-движки над ними. */
+export function mergedNodes(snapshots: ModelSnapshot[]): SceneNode[] {
+  return snapshots.flatMap((snapshot) => {
+    const rootId = `engine:${snapshot.engine}`
+    const root: SceneNode = {
+      id: rootId,
+      name: ENGINE_LABEL[snapshot.engine],
+      kind: 'engine',
+      parentId: null,
+      visible: true,
+      locked: false,
+      engine: snapshot.engine,
+      triangles: snapshot.triangles,
+    }
+    // Узлы верхнего уровня движка подвешиваем под его корень.
+    const nodes = snapshot.nodes.map((n) => (n.parentId ? n : { ...n, parentId: rootId }))
+    return [root, ...nodes]
+  })
 }

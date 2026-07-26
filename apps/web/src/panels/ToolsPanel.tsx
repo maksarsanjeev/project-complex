@@ -19,11 +19,11 @@ import { t } from '../i18n'
 import { NODE_KINDS } from '../nodes/catalog'
 import { useEngines } from '../store/engine'
 import { useLayout } from '../store/layout'
-import { useModel } from '../store/model'
+import { ENGINE_LABEL, useModel } from '../store/model'
 import { useSession } from '../store/session'
 import { useViewport } from '../store/viewport'
 import { IdChip, Label, NumField, Section, StatusMark, type MarkState } from '../ui'
-import { isParamLocked, rowsFromSnapshot, rowsFromTower } from '../viewport/sceneTree'
+import { isParamLocked, rowsFromSnapshots, rowsFromTower } from '../viewport/sceneTree'
 import { ParamField } from './ParamField'
 import s from './panels.module.css'
 
@@ -115,11 +115,11 @@ function PartInspector() {
   const selected = useViewport((v) => v.selected)
   // Ищем в том же дереве, что показывает аутлайнер, — иначе выделение
   // настоящей части не находилось бы среди демонстрационных.
-  const snapshot = useModel((m) => m.snapshot)
+  const snapshots = useModel((m) => m.snapshots)
   const parametric = useEngines((e) => e.boundEngine) !== 'sketchup'
   const rows = useMemo(
-    () => (snapshot ? rowsFromSnapshot(snapshot) : parametric ? rowsFromTower(params) : []),
-    [snapshot, parametric, params],
+    () => (snapshots.length ? rowsFromSnapshots(snapshots) : parametric ? rowsFromTower(params) : []),
+    [snapshots, parametric, params],
   )
   if (selected.length > 1) {
     // Разбирать по полям набор объектов бессмысленно — показываем состав.
@@ -252,9 +252,9 @@ function Tags() {
   // и любое построение внутри него создают новый объект на каждый рендер,
   // zustand видит новую ссылку и уходит в бесконечное обновление. Проверено
   // на живой странице — React error #185.
-  const snapshot = useModel((m) => m.snapshot)
-  const tags = snapshot?.tags
-  const rows = useMemo(() => (snapshot ? rowsFromSnapshot(snapshot) : []), [snapshot])
+  const snapshots = useModel((m) => m.snapshots)
+  const tags = snapshots.flatMap((x) => x.tags ?? [])
+  const rows = useMemo(() => rowsFromSnapshots(snapshots), [snapshots])
 
   if (!tags?.length) return <Label tone="muted">{t('tags.empty')}</Label>
 
@@ -279,8 +279,8 @@ function Tags() {
 
 /** Материалы модели: цвет, прозрачность и на скольких объектах применён. */
 function Materials() {
-  const snapshot = useModel((m) => m.snapshot)
-  const materials = snapshot?.materials
+  const snapshots = useModel((m) => m.snapshots)
+  const materials = snapshots.flatMap((x) => x.materials ?? [])
 
   // Неиспользуемые вниз: они есть в файле, но на модель не влияют.
   const sorted = useMemo(
@@ -325,7 +325,7 @@ function Materials() {
  * правка разойдётся по всей модели.
  */
 function Definitions() {
-  const definitions = useModel((m) => m.snapshot)?.definitions
+  const definitions = useModel((m) => m.snapshots).flatMap((x) => x.definitions ?? [])
 
   if (!definitions?.length) return <Label tone="muted">{t('definitions.empty')}</Label>
 
@@ -388,7 +388,7 @@ function PullModel() {
   const engines = useEngines((e) => e.engines)
   const pull = useModel((m) => m.pull)
   const loading = useModel((m) => m.loading)
-  const snapshot = useModel((m) => m.snapshot)
+  const snapshots = useModel((m) => m.snapshots)
   const error = useModel((m) => m.error)
 
   const online = engines.some((e) => e.id === bound && e.status === 'online')
@@ -405,12 +405,14 @@ function PullModel() {
         {loading ? t('engine.pull.loading') : t('engine.pull')}
       </button>
       {error ? <Label tone="muted">{error}</Label> : null}
-      {snapshot ? (
-        <Label tone="muted">
-          {snapshot.title} · {snapshot.triangles.toLocaleString('ru')} тр
-          {snapshot.truncated ? ' · показано не всё' : ''}
+      {/* Подпись по каждому движку отдельно: проект бывает открыт сразу в
+          нескольких, и общая сумма скрыла бы, чего именно не хватает. */}
+      {snapshots.map((snap) => (
+        <Label key={snap.engine} tone="muted">
+          {ENGINE_LABEL[snap.engine]}: {snap.title} · {snap.triangles.toLocaleString('ru')} тр
+          {snap.truncated ? ' · показано не всё' : ''}
         </Label>
-      ) : null}
+      ))}
     </>
   )
 }

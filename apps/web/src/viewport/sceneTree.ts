@@ -1,4 +1,5 @@
 import type { ModelSnapshot, SceneNodeKind } from '@complex/protocol'
+import { mergedNodes } from '../store/model'
 import type { PartFlags, PartId, TowerParams } from '../store/viewport'
 import { SLAB_THICKNESS } from './geometry'
 
@@ -62,6 +63,8 @@ export interface SceneRow {
   material?: string
   /** Экземпляров у определения; больше одного — правка разойдётся по всем. */
   instances?: number
+  /** Другие контейнеры, которым объект тоже принадлежит. */
+  memberships?: string[]
   size: readonly [number, number, number]
 }
 
@@ -75,12 +78,13 @@ export interface SceneRow {
  *
  * Габарит не считаем: снимок его не приносит, а нули вместо размера хуже прочерка.
  */
-export function rowsFromSnapshot(snapshot: ModelSnapshot | null): SceneRow[] {
-  if (!snapshot) return []
+export function rowsFromSnapshots(snapshots: ModelSnapshot[]): SceneRow[] {
+  if (!snapshots.length) return []
+  const nodes = mergedNodes(snapshots)
 
   const rows: SceneRow[] = []
   const walk = (parentId: string | null, depth: number): void => {
-    for (const node of snapshot.nodes) {
+    for (const node of nodes) {
       if ((node.parentId ?? null) !== parentId) continue
       rows.push({
         id: node.id,
@@ -91,6 +95,7 @@ export function rowsFromSnapshot(snapshot: ModelSnapshot | null): SceneRow[] {
         tag: node.tag,
         material: node.material,
         instances: node.instances,
+        memberships: node.memberships,
         size: [0, 0, 0] as const,
       })
       walk(node.id, depth + 1)
