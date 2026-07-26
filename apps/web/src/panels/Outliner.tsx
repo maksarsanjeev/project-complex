@@ -42,17 +42,18 @@ export function Outliner() {
     [snapshots, parametric, params],
   )
 
-  const { visible, total } = useMemo(
-    () => ({
-      // Считаем по листьям: у контейнера треугольники уже просуммированы с
-      // потомками, и сложение всех подряд дало бы двойной счёт.
-      total: rows.filter((r) => r.kind !== 'layer').reduce((sum, r) => sum + r.triangles, 0),
-      visible: rows
-        .filter((r) => r.kind !== 'layer')
-        .reduce((sum, r) => sum + (hidden[r.id] ? 0 : r.triangles), 0),
-    }),
-    [rows, hidden],
-  )
+  const { visible, total } = useMemo(() => {
+    // Складываем только ЛИСТЬЯ. У контейнера треугольники уже просуммированы с
+    // потомками, и сложение всех подряд удваивает счёт — что и вышло, когда
+    // над деревом появился корень движка: 1 778 превратились в 3 556.
+    //
+    // Лист определяем по соседу: следующая строка глубже — значит есть дети.
+    const leaves = rows.filter((row, i) => (rows[i + 1]?.depth ?? 0) <= row.depth)
+    return {
+      total: leaves.reduce((sum, r) => sum + r.triangles, 0),
+      visible: leaves.reduce((sum, r) => sum + (hidden[r.id] ? 0 : r.triangles), 0),
+    }
+  }, [rows, hidden])
 
   /** Строки ветки: сам контейнер и всё, что вложено в него. */
   const branchIds = (row: SceneRow, index: number): PartId[] => {
