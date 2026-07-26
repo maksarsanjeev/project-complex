@@ -25,6 +25,7 @@ import { useViewport } from '../store/viewport'
 import { IdChip, Label, NumField, Section, StatusMark, type MarkState } from '../ui'
 import { isParamLocked, rowsFromSnapshots, rowsFromTower } from '../viewport/sceneTree'
 import { ParamField } from './ParamField'
+import { RenameField } from './RenameField'
 import s from './panels.module.css'
 
 type IconType = ComponentType<{ size?: number; strokeWidth?: number }>
@@ -263,8 +264,10 @@ function Tags() {
       {tags.map((tag) => {
         const used = rows.filter((r) => r.tag === tag.name).length
         return (
-          <div key={tag.name} className={s.kv}>
-            <Label>{tag.name}</Label>
+          <div key={tag.id ?? tag.name} className={s.kv}>
+            {/* Тег по умолчанию (Layer0) переименовать нельзя — SketchUp его
+                имя не отдаёт. Движок откажет, и имя останется прежним. */}
+            <RenameField id={tag.id} name={tag.name} className={s.renameLabel} />
             <span className={s.kvValue}>
               {tag.folder ? `${tag.folder} · ` : ''}
               {used} {t('tags.objects')}
@@ -293,8 +296,8 @@ function Materials() {
   return (
     <div className={s.fields}>
       {sorted.map((mat) => (
-        <div key={mat.name} className={s.kv}>
-          <Label>
+        <div key={mat.id ?? mat.name} className={s.kv}>
+          <span className={s.matName}>
             <span
               className={s.swatch}
               style={{
@@ -304,8 +307,8 @@ function Materials() {
                 opacity: mat.alpha,
               }}
             />
-            {mat.name}
-          </Label>
+            <RenameField id={mat.id} name={mat.name} className={s.renameLabel} />
+          </span>
           <span className={s.kvValue}>
             {mat.used ? `${mat.used} ${t('tags.objects')}` : t('materials.unused')}
             {mat.textured ? ` · ${t('materials.textured')}` : ''}
@@ -332,8 +335,10 @@ function Definitions() {
   return (
     <div className={s.fields}>
       {definitions.map((d) => (
-        <div key={d.name} className={s.kv}>
-          <Label>{d.name}</Label>
+        <div key={d.id ?? d.name} className={s.kv}>
+          {/* Имя определения наследуют безымянные экземпляры и библиотека
+              компонентов — правка видна сразу во всех. */}
+          <RenameField id={d.id} name={d.name} className={s.renameLabel} />
           <span className={s.kvValue}>
             {d.group ? t('definitions.group') : t('definitions.component')} · {d.instances}{' '}
             {t('definitions.instances')}

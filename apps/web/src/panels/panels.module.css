@@ -581,3 +581,37 @@
   border: 1px solid var(--hairline);
   vertical-align: baseline;
 }
+
+/* Имя в списках тегов, материалов и определений. Выглядит как обычная
+   подпись — то, что его можно править, узнаётся двойным кликом, а не
+   рамкой: лишние рамки в этом интерфейсе только шумят. */
+.renameLabel {
+  font: var(--font-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  cursor: text;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.renameLabel:hover:not(:disabled) {
+  color: var(--ink);
+}
+
+.renameLabel:disabled {
+  cursor: default;
+}
+
+/* Образец цвета и имя материала в одной строке. */
+.matName {
+  display: inline-flex;
+  align-items: baseline;
+  min-width: 0;
+}

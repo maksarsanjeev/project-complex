@@ -1,9 +1,9 @@
 import { Eye, EyeOff, Lock, Unlock } from 'lucide-react'
-import { useMemo, useState } from 'react'
-import { transport } from '../api/transport'
+import { useMemo } from 'react'
 import { t } from '../i18n'
 import { useEngines } from '../store/engine'
 import { useModel } from '../store/model'
+import { RenameField } from './RenameField'
 import { useViewport, type PartId } from '../store/viewport'
 import { rowsFromSnapshots, rowsFromTower, type SceneRow } from '../viewport/sceneTree'
 import { IconButton, Label } from '../ui'
@@ -31,8 +31,6 @@ export function Outliner() {
   const selectMany = useViewport((v) => v.selectMany)
 
   const snapshots = useModel((m) => m.snapshots)
-  const pull = useModel((m) => m.pull)
-  const [editing, setEditing] = useState<string | null>(null)
 
   // Демо-башня существует только для движков с параметрикой — там же, где
   // панель «параметры модели». С привязанным SketchUp сцена пуста, пока модель
@@ -55,25 +53,6 @@ export function Outliner() {
     }),
     [rows, hidden],
   )
-
-  /**
-   * Имя уходит в сам движок, а не остаётся подписью в списке. После успеха
-   * перечитываем модель: у геометрии вне групп имени в SketchUp нет, и
-   * присвоение имени превращает её в группу — идентификатор узла меняется,
-   * и знать об этом должен снимок, а не мы на глазок.
-   */
-  const commitRename = async (nodeId: PartId, value: string): Promise<void> => {
-    setEditing(null)
-    const name = value.trim()
-    const current = rows.find((r) => r.id === nodeId)?.name
-    if (!name || name === current) return
-    try {
-      await transport.renameObject({ nodeId, name })
-      await pull()
-    } catch {
-      // Движок отказал — снимок не трогаем, в списке остаётся прежнее имя.
-    }
-  }
 
   /** Строки ветки: сам контейнер и всё, что вложено в него. */
   const branchIds = (row: SceneRow, index: number): PartId[] => {
@@ -117,35 +96,25 @@ export function Outliner() {
               {/* Отступ по глубине: вложенность в модели произвольная. */}
               <span className={s.nodeIndent} style={{ width: 8 + row.depth * 14 }} />
 
-              {editing === row.id ? (
-                <input
-                  className={s.nodeName}
-                  autoFocus
-                  defaultValue={row.name}
-                  onBlur={(e) => void commitRename(row.id, e.currentTarget.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') e.currentTarget.blur()
-                    if (e.key === 'Escape') setEditing(null)
-                  }}
-                />
-              ) : (
-                <button
-                  type="button"
-                  className={s.nodeName}
-                  title={locked[row.id] ? t('outliner.lockedHint') : t('outliner.renameHint')}
-                  disabled={locked[row.id]}
-                  onClick={(e) =>
-                    isContainer
-                      ? selectMany(ids.filter((id) => !locked[id]))
-                      : select(row.id, e.ctrlKey || e.metaKey || e.shiftKey)
-                  }
-                  onDoubleClick={() => {
-                    if (!isContainer) setEditing(row.id)
-                  }}
-                >
-                  {row.name}
-                </button>
-              )}
+              <RenameField
+                /* Корень движка — не объект модели, переименовывать нечего. */
+                id={row.kind === 'engine' ? undefined : row.id}
+                name={row.name}
+                className={s.nodeName}
+                disabled={locked[row.id]}
+                title={
+                  locked[row.id]
+                    ? t('outliner.lockedHint')
+                    : row.kind === 'engine'
+                      ? t('outliner.engineRoot')
+                      : undefined
+                }
+                onClick={(e) =>
+                  isContainer
+                    ? selectMany(ids.filter((id) => !locked[id]))
+                    : select(row.id, (e as React.MouseEvent).ctrlKey || (e as React.MouseEvent).metaKey || (e as React.MouseEvent).shiftKey)
+                }
+              />
 
               {/* Тег и связанность компонента — пометками, а не ветками дерева. */}
               {row.tag && row.tag !== 'Layer0' ? (

@@ -31,6 +31,9 @@ export const en: Record<I18nKey, string> = {
 
   'outliner.visibility': 'visibility',
   'outliner.lock': 'lock',
+  'rename.hint': 'click to select, double-click to rename',
+  'rename.locked': 'renaming is not available',
+  'outliner.engineRoot': 'engine branch — rename it in the application itself',
   'tools.section.tags': 'tags',
   'tools.section.materials': 'materials',
   'tools.section.definitions': 'components and groups',

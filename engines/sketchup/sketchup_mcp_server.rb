@@ -1,5 +1,5 @@
 # sketchup_mcp_server.rb
-# SketchUp MCP Bridge Plugin - v2.6
+# SketchUp MCP Bridge Plugin - v2.7
 #
 # Embeds a lightweight TCP/HTTP server inside SketchUp so that
 # an external MCP server (Python) can drive SketchUp programmatically.
@@ -300,7 +300,7 @@ module SU_MCP
       host:        '127.0.0.1',
       app:         'sketchup',
       app_version: (Sketchup.version.to_s rescue nil),
-      plugin:      '2.6',
+      plugin:      '2.7',
       # Когда человек назначил это окно рабочим для ИИ. nil — не назначал.
       ai_target_at: (@ai_target_at ? @ai_target_at.strftime('%Y-%m-%dT%H:%M:%SZ') : nil)
     }.merge(model_descriptor)
@@ -1546,7 +1546,35 @@ module SU_MCP
     m.start_operation('MCP: Rename', true)
     begin
       result =
-        if node.start_with?('loose:')
+        if node.start_with?('tag:')
+          # Тег (в старых версиях «слой»). Layer0 переименовать нельзя — это
+          # тег по умолчанию, SketchUp его имя не отдаёт.
+          old = node.sub('tag:', '')
+          layer = m.layers[old]
+          raise "тега «#{old}» нет" unless layer
+          raise 'тег по умолчанию переименовать нельзя' if old == 'Layer0'
+          layer.name = name
+          { kind: 'tag', name: layer.name, node_id: "tag:#{layer.name}" }
+
+        elsif node.start_with?('material:')
+          old = node.sub('material:', '')
+          mat = m.materials[old]
+          raise "материала «#{old}» нет" unless mat
+          mat.name = name
+          { kind: 'material', name: mat.name, node_id: "material:#{mat.name}" }
+
+        elsif node.start_with?('definition:')
+          old = node.sub('definition:', '')
+          d = m.definitions[old]
+          raise "определения «#{old}» нет" unless d
+          d.name = name
+          # Имя определения — это то, что видно в библиотеке компонентов и что
+          # наследуют безымянные экземпляры. Меняется у всех сразу, поэтому
+          # сообщаем, скольких это коснулось.
+          { kind: 'definition', name: d.name, instances: d.instances.length,
+            node_id: "definition:#{d.name}" }
+
+        elsif node.start_with?('loose:')
           anchor = node.sub('loose:', '').to_i
           face = find_entity_by_id(anchor)
           raise "кусок #{anchor} не найден" unless face.is_a?(Sketchup::Face)
@@ -1567,9 +1595,16 @@ module SU_MCP
         end
       m.commit_operation
 
-      # Проверяем факт: перечитываем имя из модели, а не верим присваиванию.
-      check = find_entity_by_id(result[:id])
-      result[:confirmed] = (check && check.respond_to?(:name) && check.name == name) ? true : false
+      # Проверяем ФАКТ: перечитываем из модели, а не верим присваиванию.
+      result[:confirmed] =
+        case result[:kind]
+        when 'tag'        then !m.layers[name].nil?
+        when 'material'   then !m.materials[name].nil?
+        when 'definition' then !m.definitions[name].nil?
+        else
+          check = find_entity_by_id(result[:id])
+          !!(check && check.respond_to?(:name) && check.name == name)
+        end
       result
     rescue StandardError
       safe_abort(m)
@@ -1913,7 +1948,7 @@ module SU_MCP
   end
 
   unless file_loaded?(__FILE__)
-    log "Loading SketchUp MCP Plugin v2.6"
+    log "Loading SketchUp MCP Plugin v2.7"
     Sketchup.add_observer(AppWatcher.new) rescue nil
     at_exit { SU_MCP.remove_card rescue nil }
     log "Ruby #{RUBY_VERSION} | SketchUp #{Sketchup.version}"

@@ -32,6 +32,9 @@ export const ru = {
 
   'outliner.visibility': 'видимость',
   'outliner.lock': 'блокировка',
+  'rename.hint': 'клик — выделить, двойной клик — переименовать',
+  'rename.locked': 'переименование недоступно',
+  'outliner.engineRoot': 'ветка движка — переименовывается в самом приложении',
   'tools.section.tags': 'теги',
   'tools.section.materials': 'материалы',
   'tools.section.definitions': 'компоненты и группы',

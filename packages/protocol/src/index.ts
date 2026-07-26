@@ -282,6 +282,8 @@ export interface SceneNode {
 
 /** Тег модели: ярлык видимости, не контейнер. */
 export interface ModelTag {
+  /** Идентификатор с приставкой движка: `su:tag:Кирпич`. Ставится сервером. */
+  id?: string
   name: string
   visible: boolean
   /** Папка тегов, если он в неё вложен. */
@@ -289,6 +291,7 @@ export interface ModelTag {
 }
 
 export interface ModelMaterial {
+  id?: string
   name: string
   color?: { r: number; g: number; b: number } | null
   /** 1 — непрозрачный. */
@@ -300,6 +303,7 @@ export interface ModelMaterial {
 
 /** Определение компонента или группы из библиотеки модели. */
 export interface ModelDefinition {
+  id?: string
   name: string
   instances: number
   /** Группа — это компонент с флагом; у неё копии независимы. */

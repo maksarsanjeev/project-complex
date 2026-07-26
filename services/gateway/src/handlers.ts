@@ -73,6 +73,12 @@ function namespace(snapshot: ModelSnapshot, engine: EngineId): ModelSnapshot {
     })),
     parts: snapshot.parts.map((part) => ({ ...part, nodeId: id(part.nodeId) })),
     selection: snapshot.selection?.map(id),
+    // Теги, материалы и определения тоже адресуемы: их переименовывают так же,
+    // как объекты, и идентификатор нужен по той же причине — имена в разных
+    // движках совпадают, «Бетон» есть и в SketchUp, и в Rhino.
+    tags: snapshot.tags?.map((x) => ({ ...x, id: id(`tag:${x.name}`) })),
+    materials: snapshot.materials?.map((x) => ({ ...x, id: id(`material:${x.name}`) })),
+    definitions: snapshot.definitions?.map((x) => ({ ...x, id: id(`definition:${x.name}`) })),
   }
 }
 
