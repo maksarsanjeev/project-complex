@@ -1,0 +1,7 @@
+﻿git : warning: in the working copy of '.dockerignore', CRLF will be replaced by LF the next time Git touches it
+At line:11 char:1
++ git add -A 2>`$null
++ ~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (warning: in the... Git touches it:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
