@@ -45,30 +45,82 @@ export interface SceneLayer {
 }
 
 /**
- * То же дерево, но из настоящей модели движка.
+ * Плоский список строк дерева с глубиной вложенности.
  *
- * Форма узлов совпадает с демонстрационной ровно затем, чтобы панель
- * аутлайнера не пришлось переписывать: меняется источник, а не механика.
- *
- * Габарит здесь не считаем: снимок его не приносит, а выдумывать нули хуже,
- * чем честно показать прочерк в инспекторе.
+ * Почему плоский, а не вложенные массивы: вложенность в модели произвольная —
+ * группа в группе в компоненте, — и рисовать её рекурсивно значит городить
+ * рекурсивный компонент ради отступа. Глубина числом решает то же самое.
  */
-export function treeFromSnapshot(snapshot: ModelSnapshot | null): SceneLayer[] {
+export interface SceneRow {
+  id: PartId
+  name: string
+  kind: SceneNodeKind
+  depth: number
+  triangles: number
+  /** Тег объекта — показывается пометкой, а не родительской веткой. */
+  tag?: string
+  material?: string
+  /** Экземпляров у определения; больше одного — правка разойдётся по всем. */
+  instances?: number
+  size: readonly [number, number, number]
+}
+
+/**
+ * Строки дерева из настоящей модели — ПО ВЛОЖЕННОСТИ, как в самом SketchUp.
+ *
+ * Раньше корнем дерева были слои. Это привычно по Rhino и AutoCAD, но в
+ * SketchUp неверно: тег там ничего не содержит, он лишь помечает объект.
+ * Вложенность даёт только группа или компонент — родной аутлайнер показывает
+ * ровно её. Дерево по слоям рисовало структуру, которой в файле нет.
+ *
+ * Габарит не считаем: снимок его не приносит, а нули вместо размера хуже прочерка.
+ */
+export function rowsFromSnapshot(snapshot: ModelSnapshot | null): SceneRow[] {
   if (!snapshot) return []
 
-  const layers = snapshot.nodes.filter((n) => n.kind === 'layer')
-  return layers.map((layer) => ({
-    material: layer.name,
-    parts: snapshot.nodes
-      .filter((n) => n.parentId === layer.id)
-      .map((node) => ({
+  const rows: SceneRow[] = []
+  const walk = (parentId: string | null, depth: number): void => {
+    for (const node of snapshot.nodes) {
+      if ((node.parentId ?? null) !== parentId) continue
+      rows.push({
         id: node.id,
         name: node.name,
         kind: node.kind,
+        depth,
         triangles: node.triangles ?? 0,
+        tag: node.tag,
+        material: node.material,
+        instances: node.instances,
         size: [0, 0, 0] as const,
-      })),
-  }))
+      })
+      walk(node.id, depth + 1)
+    }
+  }
+  walk(null, 0)
+  return rows
+}
+
+/** Те же строки, но для демо-башни: слой, под ним части. */
+export function rowsFromTower(p: TowerParams): SceneRow[] {
+  return buildSceneTree(p).flatMap((layer) => [
+    {
+      id: `layer:${layer.material}`,
+      name: layer.material,
+      kind: 'layer' as SceneNodeKind,
+      depth: 0,
+      triangles: layer.parts.reduce((sum, x) => sum + x.triangles, 0),
+      size: [0, 0, 0] as const,
+    },
+    ...layer.parts.map((part) => ({
+      id: part.id,
+      name: part.name,
+      kind: part.kind,
+      depth: 1,
+      triangles: part.triangles,
+      material: layer.material,
+      size: part.size,
+    })),
+  ])
 }
 
 /** Треугольников в призме из `sides` граней: боковина плюс две крышки. */

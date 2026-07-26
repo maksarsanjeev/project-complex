@@ -225,10 +225,54 @@ export interface SceneNode {
   parentId: string | null
   visible: boolean
   locked: boolean
-  /** Материал слоя, если узел — слой. */
+  /** Материал объекта, если назначен. */
   material?: string
   /** Треугольников в узле и потомках — для статусбара. */
   triangles?: number
+  /**
+   * Тег объекта (в старых версиях SketchUp — «слой»).
+   *
+   * Тег НЕ содержит объектов: это ярлык для управления видимостью, а не
+   * контейнер, как слой в Rhino или AutoCAD. Поэтому он поле узла, а не его
+   * родитель — вложенность в SketchUp даёт только группа или компонент.
+   */
+  tag?: string
+  /** Имя определения — только у компонентов. */
+  definition?: string
+  /**
+   * Сколько экземпляров у определения этого компонента.
+   *
+   * Больше одного — правка одного экземпляра изменит все остальные. Это надо
+   * видеть до правки, а не после.
+   */
+  instances?: number
+}
+
+/** Тег модели: ярлык видимости, не контейнер. */
+export interface ModelTag {
+  name: string
+  visible: boolean
+  /** Папка тегов, если он в неё вложен. */
+  folder?: string | null
+}
+
+export interface ModelMaterial {
+  name: string
+  color?: { r: number; g: number; b: number } | null
+  /** 1 — непрозрачный. */
+  alpha: number
+  textured: boolean
+  /** Сколько объектов носит этот материал; 0 — заведён, но не используется. */
+  used: number
+}
+
+/** Определение компонента или группы из библиотеки модели. */
+export interface ModelDefinition {
+  name: string
+  instances: number
+  /** Группа — это компонент с флагом; у неё копии независимы. */
+  group: boolean
+  entities: number
 }
 
 /**
@@ -252,6 +296,10 @@ export interface ModelSnapshot {
   /** Дерево для аутлайнера. */
   nodes: SceneNode[]
   parts: MeshPart[]
+  /** Теги модели — отдельным списком, а не ветками дерева. */
+  tags?: ModelTag[]
+  materials?: ModelMaterial[]
+  definitions?: ModelDefinition[]
   /** Что выделено в самом движке на момент снимка: узлы вида `ent:43725`. */
   selection?: string[]
   /** Когда снято — вьюпорт показывает свежесть. */

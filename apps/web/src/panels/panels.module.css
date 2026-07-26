@@ -557,3 +557,27 @@
   background: var(--ink);
   transition: width var(--dur-slow) var(--ease);
 }
+
+/* Пометка на строке дерева: тег объекта или число связанных экземпляров.
+   Не ветка и не кнопка — сведение, которое читают глазами по ходу. */
+.nodeTag {
+  font: var(--font-micro);
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+  border: 1px solid var(--hairline);
+  padding: 0 3px;
+  margin-left: 4px;
+  white-space: nowrap;
+  flex: none;
+}
+
+/* Образец цвета материала. Квадрат, а не круг: скругления в этом интерфейсе
+   не используются нигде. */
+.swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  border: 1px solid var(--hairline);
+  vertical-align: baseline;
+}

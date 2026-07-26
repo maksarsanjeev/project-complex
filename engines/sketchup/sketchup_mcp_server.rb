@@ -1,5 +1,5 @@
 # sketchup_mcp_server.rb
-# SketchUp MCP Bridge Plugin - v2.5
+# SketchUp MCP Bridge Plugin - v2.6
 #
 # Embeds a lightweight TCP/HTTP server inside SketchUp so that
 # an external MCP server (Python) can drive SketchUp programmatically.
@@ -300,7 +300,7 @@ module SU_MCP
       host:        '127.0.0.1',
       app:         'sketchup',
       app_version: (Sketchup.version.to_s rescue nil),
-      plugin:      '2.5',
+      plugin:      '2.6',
       # Когда человек назначил это окно рабочим для ИИ. nil — не назначал.
       ai_target_at: (@ai_target_at ? @ai_target_at.strftime('%Y-%m-%dT%H:%M:%SZ') : nil)
     }.merge(model_descriptor)
@@ -1252,6 +1252,9 @@ module SU_MCP
       truncated: state[:truncated],
       nodes:     state[:nodes].values,
       parts:     state[:parts],
+      tags:      collect_tags,
+      materials: collect_materials,
+      definitions: collect_definitions,
       # Что выделено в самом SketchUp. Идёт вместе со снимком, чтобы веб-морда
       # подхватывала выделение, сделанное руками в приложении, а не заводила
       # своё, ни с чем не связанное.
@@ -1259,16 +1262,66 @@ module SU_MCP
     }
   end
 
-  # Узел дерева: слой или группа. Слои создаются по требованию, чтобы в дереве
-  # не оказалось пустых веток от слоёв, на которых ничего нет.
-  def self.ensure_layer_node(name, state)
-    id = "layer:#{name}"
-    state[:nodes][id] ||= {
-      id: id, name: name, kind: 'layer', parentId: nil,
-      visible: (model.layers[name] ? model.layers[name].visible? : true),
-      locked: false, material: name, triangles: 0
-    }
-    id
+  # Теги (в старых версиях «слои»), материалы и определения компонентов —
+  # тремя отдельными списками.
+  #
+  # ВАЖНО про теги: в SketchUp тег НИЧЕГО НЕ СОДЕРЖИТ. Это ярлык на объекте
+  # для управления видимостью, а не контейнер, как слой в Rhino или AutoCAD.
+  # Вложенность даёт только группа или компонент — потому родной аутлайнер
+  # SketchUp и показывает исключительно их. Поэтому теги идут списком, а не
+  # ветками дерева: иначе мы рисовали бы структуру, которой в файле нет.
+
+  def self.collect_tags
+    model.layers.map do |l|
+      {
+        name:    l.name,
+        visible: l.visible?,
+        folder:  ((l.respond_to?(:folder) && l.folder) ? l.folder.name : nil)
+      }
+    end
+  end
+
+  def self.collect_materials
+    used = Hash.new(0)
+    count_materials(model.entities, used)
+
+    model.materials.map do |mat|
+      c = (mat.color rescue nil)
+      {
+        name:  mat.name,
+        color: c ? { r: c.red, g: c.green, b: c.blue } : nil,
+        alpha: mat.alpha,
+        textured: !mat.texture.nil?,
+        used:  used[mat.name]
+      }
+    end
+  end
+
+  # Сколько объектов носит каждый материал. Считаем и внутри групп: материал,
+  # назначенный на грань в глубине, для человека такой же используемый.
+  def self.count_materials(entities, used)
+    entities.each do |e|
+      m = (e.material rescue nil)
+      used[m.name] += 1 if m
+      case e
+      when Sketchup::Group             then count_materials(e.entities, used)
+      when Sketchup::ComponentInstance then count_materials(e.definition.entities, used)
+      end
+    end
+  end
+
+  def self.collect_definitions
+    model.definitions.reject(&:image?).map do |d|
+      {
+        name:      d.name,
+        instances: d.instances.length,
+        # Группа в SketchUp — это компонент с флагом. Разделяем их явно:
+        # у компонента правка одного экземпляра меняет ВСЕ остальные, у группы
+        # копия независима, и путать эти две вещи дорого.
+        group:     d.group?,
+        entities:  d.entities.length
+      }
+    end
   end
 
   def self.bump_triangles(node_id, count, state)
@@ -1296,15 +1349,21 @@ module SU_MCP
         # родном аутлайнере. Придумывать своё нельзя: человек ищет в списке то
         # же слово, что видит в приложении.
         name = e.name.to_s.empty? ? e.definition.name : e.name
-        name = e.definition.name if !is_group && e.name.to_s.empty?
-        layer_id = ensure_layer_node(e.layer.name, state)
         node_id = "ent:#{e.entityID}"
         state[:nodes][node_id] = {
           id: node_id, name: name, kind: is_group ? 'group' : 'block',
-          parentId: parent_id || layer_id,
+          # Родитель — вмещающая группа, и только она. Тег родителем НЕ бывает:
+          # в SketchUp он ничего не содержит, а лишь помечает объект.
+          parentId: parent_id,
           visible: e.visible? && e.layer.visible?,
           locked: (e.locked? rescue false),
-          triangles: 0
+          triangles: 0,
+          tag: e.layer.name,
+          material: ((e.material && e.material.name) rescue nil),
+          # У компонента экземпляры связаны: правка одного меняет все. Это надо
+          # видеть в списке до того, как правка разойдётся по модели.
+          definition: (is_group ? nil : e.definition.name),
+          instances: (is_group ? nil : e.definition.instances.length)
         }
         inner = is_group ? e.entities : e.definition.entities
         collect_entities(inner, transform * e.transformation, node_id, e.layer.name, state)
@@ -1329,7 +1388,6 @@ module SU_MCP
             # Ключ узла — идентификатор одной из граней куска. Он не только
             # различает куски, но и позволяет потом найти их обратно: по грани
             # берётся all_connected, и весь кусок в руках.
-            layer_id = ensure_layer_node(layer_name, state)
             anchor = loose_anchor(e, state)
             loose_id = "loose:#{anchor}"
             state[:nodes][loose_id] ||= {
@@ -1340,8 +1398,10 @@ module SU_MCP
               # человек даст имя, кусок станет настоящей группой с этим именем.
               name: "вне групп #{anchor}",
               kind: 'mesh',
-              parentId: layer_id,
-              visible: true, locked: false, triangles: 0
+              parentId: parent_id,
+              visible: true, locked: false, triangles: 0,
+              tag: layer_name,
+              material: ((e.material && e.material.name) rescue nil)
             }
             loose_id
           end
@@ -1853,7 +1913,7 @@ module SU_MCP
   end
 
   unless file_loaded?(__FILE__)
-    log "Loading SketchUp MCP Plugin v2.5"
+    log "Loading SketchUp MCP Plugin v2.6"
     Sketchup.add_observer(AppWatcher.new) rescue nil
     at_exit { SU_MCP.remove_card rescue nil }
     log "Ruby #{RUBY_VERSION} | SketchUp #{Sketchup.version}"

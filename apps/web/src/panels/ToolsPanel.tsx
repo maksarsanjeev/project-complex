@@ -23,7 +23,7 @@ import { useModel } from '../store/model'
 import { useSession } from '../store/session'
 import { useViewport } from '../store/viewport'
 import { IdChip, Label, NumField, Section, StatusMark, type MarkState } from '../ui'
-import { buildSceneTree, findPart, isParamLocked, treeFromSnapshot } from '../viewport/sceneTree'
+import { isParamLocked, rowsFromSnapshot, rowsFromTower } from '../viewport/sceneTree'
 import { ParamField } from './ParamField'
 import s from './panels.module.css'
 
@@ -117,15 +117,13 @@ function PartInspector() {
   // настоящей части не находилось бы среди демонстрационных.
   const snapshot = useModel((m) => m.snapshot)
   const parametric = useEngines((e) => e.boundEngine) !== 'sketchup'
-  const tree = useMemo(
-    () => (snapshot ? treeFromSnapshot(snapshot) : parametric ? buildSceneTree(params) : []),
+  const rows = useMemo(
+    () => (snapshot ? rowsFromSnapshot(snapshot) : parametric ? rowsFromTower(params) : []),
     [snapshot, parametric, params],
   )
   if (selected.length > 1) {
     // Разбирать по полям набор объектов бессмысленно — показываем состав.
-    const names = selected
-      .map((id) => findPart(tree, id)?.part.name ?? id)
-      .join(', ')
+    const names = selected.map((id) => rows.find((r) => r.id === id)?.name ?? id).join(', ')
     return (
       <div className={s.fields}>
         <div className={s.kv}>
@@ -137,11 +135,11 @@ function PartInspector() {
     )
   }
 
-  const found = selected[0] ? findPart(tree, selected[0]) : null
+  const part = selected[0] ? rows.find((r) => r.id === selected[0]) : null
 
-  if (!found) return <Label>{t('inspect.empty')}</Label>
+  if (!part) return <Label>{t('inspect.empty')}</Label>
 
-  const { part, material } = found
+  const material = part.material ?? part.tag ?? '—'
   const [x, y, z] = part.size
 
   return (
@@ -237,6 +235,103 @@ function ModelParams() {
       </div>
       {anyLocked ? <Label>{t('inspect.lockedParams')}</Label> : null}
     </>
+  )
+}
+
+/* ── теги и материалы ─────────────────────────────────────────── */
+
+/**
+ * Теги модели — списком, а не деревом.
+ *
+ * В SketchUp тег ничего не содержит: это ярлык на объекте для управления
+ * видимостью. Рисовать его веткой дерева значит показывать структуру, которой
+ * в файле нет, — поэтому он живёт отдельным списком, как и в самом приложении.
+ */
+function Tags() {
+  const tags = useModel((m) => m.snapshot?.tags ?? [])
+  const rows = useModel((m) => (m.snapshot ? rowsFromSnapshot(m.snapshot) : []))
+
+  if (!tags.length) return <Label tone="muted">{t('tags.empty')}</Label>
+
+  return (
+    <div className={s.fields}>
+      {tags.map((tag) => {
+        const used = rows.filter((r) => r.tag === tag.name).length
+        return (
+          <div key={tag.name} className={s.kv}>
+            <Label>{tag.name}</Label>
+            <span className={s.kvValue}>
+              {tag.folder ? `${tag.folder} · ` : ''}
+              {used} {t('tags.objects')}
+              {tag.visible ? '' : ` · ${t('tags.hidden')}`}
+            </span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Материалы модели: цвет, прозрачность и на скольких объектах применён. */
+function Materials() {
+  const materials = useModel((m) => m.snapshot?.materials ?? [])
+
+  if (!materials.length) return <Label tone="muted">{t('materials.empty')}</Label>
+
+  // Неиспользуемые вниз: они есть в файле, но на модель не влияют.
+  const sorted = [...materials].sort((a, b) => b.used - a.used)
+
+  return (
+    <div className={s.fields}>
+      {sorted.map((mat) => (
+        <div key={mat.name} className={s.kv}>
+          <Label>
+            <span
+              className={s.swatch}
+              style={{
+                background: mat.color
+                  ? `rgb(${mat.color.r}, ${mat.color.g}, ${mat.color.b})`
+                  : 'transparent',
+                opacity: mat.alpha,
+              }}
+            />
+            {mat.name}
+          </Label>
+          <span className={s.kvValue}>
+            {mat.used ? `${mat.used} ${t('tags.objects')}` : t('materials.unused')}
+            {mat.textured ? ` · ${t('materials.textured')}` : ''}
+            {mat.alpha < 1 ? ` · ${Math.round(mat.alpha * 100)}%` : ''}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * Определения: что в модели компонент, а что группа.
+ *
+ * Разница дорогая: у компонента экземпляры связаны — правка одного меняет все
+ * остальные. У группы копия независима. Перепутать их значит удивиться, когда
+ * правка разойдётся по всей модели.
+ */
+function Definitions() {
+  const definitions = useModel((m) => m.snapshot?.definitions ?? [])
+
+  if (!definitions.length) return <Label tone="muted">{t('definitions.empty')}</Label>
+
+  return (
+    <div className={s.fields}>
+      {definitions.map((d) => (
+        <div key={d.name} className={s.kv}>
+          <Label>{d.name}</Label>
+          <span className={s.kvValue}>
+            {d.group ? t('definitions.group') : t('definitions.component')} · {d.instances}{' '}
+            {t('definitions.instances')}
+          </span>
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -452,6 +547,15 @@ export function ToolsPanel() {
             <ModelParams />
           </Section>
         ) : null}
+        <Section title={t('tools.section.tags')} defaultOpen={false}>
+          <Tags />
+        </Section>
+        <Section title={t('tools.section.materials')} defaultOpen={false}>
+          <Materials />
+        </Section>
+        <Section title={t('tools.section.definitions')} defaultOpen={false}>
+          <Definitions />
+        </Section>
         <Section title={t('tools.section.engine')}>
           <Engines />
         </Section>
