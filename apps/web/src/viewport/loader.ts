@@ -62,15 +62,24 @@ function normalize(object: THREE.Object3D): THREE.Object3D {
 export interface ModelBounds {
   height: number
   radius: number
+  /**
+   * Настоящий центр геометрии, а не точка над началом координат.
+   *
+   * Модель из движка почти никогда не стоит в нуле: пользователь строит там,
+   * где ему удобно. Целясь в ноль, камера показывает модель в углу кадра —
+   * или не показывает вовсе, если её унесло далеко.
+   */
+  center: THREE.Vector3
 }
 
 function measure(object: THREE.Object3D): ModelBounds {
   const box = new THREE.Box3().setFromObject(object)
-  if (box.isEmpty()) return { height: 1, radius: 1 }
+  if (box.isEmpty()) return { height: 1, radius: 1, center: new THREE.Vector3() }
   const size = box.getSize(new THREE.Vector3())
   return {
     height: Math.max(size.y, 0.001),
     radius: Math.max(Math.hypot(size.x, size.z) / 2, 0.001),
+    center: box.getCenter(new THREE.Vector3()),
   }
 }
 

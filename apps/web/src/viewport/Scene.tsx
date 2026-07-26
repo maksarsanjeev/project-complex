@@ -114,7 +114,16 @@ const FOV = 38
 /** Направление взгляда «три четверти сверху» — привычный для CAD ракурс. */
 const VIEW_DIR = new THREE.Vector3(1, 0.62, 1).normalize()
 
-function CameraRig({ height, radius }: { height: number; radius: number }) {
+function CameraRig({
+  height,
+  radius,
+  center: given,
+}: {
+  height: number
+  radius: number
+  /** Центр геометрии. Не задан — считаем от начала координат, как у башни. */
+  center?: THREE.Vector3
+}) {
   const fitToken = useViewport((s) => s.fitToken)
   const projection = useViewport((s) => s.projection)
   const camera = useThree((s) => s.camera)
@@ -129,7 +138,7 @@ function CameraRig({ height, radius }: { height: number; radius: number }) {
   useEffect(() => {
     // Вписываем описанную сферу объекта, а не «примерно высоту»: иначе высокая
     // башня обрезается сверху и снизу, а низкий объект теряется вдали.
-    const center = new THREE.Vector3(0, height / 2, 0)
+    const center = given ?? new THREE.Vector3(0, height / 2, 0)
     const sphere = Math.hypot(radius, height / 2) * 1.1
     const aspect = size.width / Math.max(size.height, 1)
 
@@ -151,7 +160,7 @@ function CameraRig({ height, radius }: { height: number; radius: number }) {
     }
     camera.updateProjectionMatrix()
     invalidate()
-  }, [fitToken, projection, height, radius, size, camera, controls, invalidate])
+  }, [fitToken, projection, height, radius, given, size, camera, controls, invalidate])
 
   return null
 }
@@ -364,6 +373,7 @@ export function Scene() {
       <CameraRig
         height={loaded ? (bounds?.height ?? 60) : height}
         radius={loaded ? (bounds?.radius ?? 30) : radius}
+        center={loaded ? bounds?.center : undefined}
       />
       <SceneStats deps={loaded ?? params} />
 
