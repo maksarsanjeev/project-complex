@@ -1,0 +1,33 @@
+services:
+  gateway:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: complex-gateway:latest
+    container_name: complex-gateway
+    restart: unless-stopped
+
+    # Сеть хоста — намеренно.
+    #
+    # Выход в интернет идёт через клиент Xray, который слушает СТРОГО на
+    # 127.0.0.1 хоста. Из обычной сети контейнера этот адрес указывал бы на сам
+    # контейнер, и запросы к модели никуда бы не ушли. Открывать Xray наружу
+    # ради этого не хочется — проще отдать контейнеру сеть хоста.
+    #
+    # Побочный эффект: контейнер слушает порт напрямую, поэтому раздел ports
+    # не нужен, а адрес получается http://<хост>:8787
+    network_mode: host
+
+    # Ключ, модель и настройки прокси. В репозиторий файл не попадает.
+    env_file:
+      - /opt/complex/.env
+
+    volumes:
+      # База переживает пересборку образа.
+      - /opt/complex/data:/data
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
