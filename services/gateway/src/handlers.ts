@@ -157,9 +157,9 @@ export const streamMethods: Record<string, StreamMethod> = {
     repo.appendMessage(sessionId, user)
 
     const providers = methods.listProviders({}) as ModelProvider[]
-    const model = providers.find((x) => x.id === s(p.modelId))?.model
+    const provider = providers.find((x) => x.id === s(p.modelId))
 
-    for await (const event of streamAnswer({ sessionId, text, model })) {
+    for await (const event of streamAnswer({ sessionId, text, provider })) {
       yield event satisfies ChatEvent
     }
   },

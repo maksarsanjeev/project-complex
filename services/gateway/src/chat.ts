@@ -1,4 +1,4 @@
-import type { ChatEvent, ChatMessage, ToolCall } from '@complex/protocol'
+import type { ChatEvent, ChatMessage, ModelProvider, ToolCall } from '@complex/protocol'
 import { config } from './config.ts'
 import { newId, nowIso } from './db/db.ts'
 import { appendMessage, listMessages } from './db/repo.ts'
@@ -94,10 +94,10 @@ function buildHistory(sessionId: string): WireMessage[] {
 export async function* streamAnswer(input: {
   sessionId: string
   text: string
-  model?: string
+  provider?: ModelProvider
 }): AsyncGenerator<ChatEvent> {
   const messageId = newId('m')
-  const model = input.model || config.defaultModel
+  const model = input.provider?.model || config.defaultModel
 
   const message: ChatMessage = {
     id: messageId,
@@ -113,12 +113,13 @@ export async function* streamAnswer(input: {
   let text = ''
   const toolCalls: ToolCall[] = []
 
-  if (!config.openRouterKey) {
-    const note =
-      'Модель не подключена: на сервере не задан OPENROUTER_API_KEY. ' +
-      'Хранение при этом работает — сообщение сохранено в базе. ' +
-      `Запрос был: «${input.text.trim().slice(0, 80)}».`
-    for (const piece of note.split(/(\s+)/)) {
+  // Модель, которую нельзя вызвать, лучше назвать вслух, чем отправить запрос
+  // и вернуть невнятную ошибку провайдера. Так выходило с выбором CLI: его имя
+  // модели не существует в OpenRouter, и вместо «CLI ещё не подключён»
+  // пользователь получал бы 400 с чужой формулировкой.
+  const refusal = explainUnavailable(input.provider)
+  if (refusal) {
+    for (const piece of refusal.split(/(\s+)/)) {
       await sleep(12)
       text += piece
       yield { type: 'token', messageId, text: piece }
@@ -208,6 +209,33 @@ export async function* streamAnswer(input: {
   // осталось бы и следа.
   appendMessage(input.sessionId, { ...message, content: text, streaming: false, toolCalls })
   yield { type: 'message-end', messageId }
+}
+
+/**
+ * Почему выбранной моделью нельзя воспользоваться — или null, если можно.
+ * Пустая строка и null тут не одно и то же: null означает «всё в порядке».
+ */
+function explainUnavailable(provider?: ModelProvider): string | null {
+  if (provider?.transport === 'cli') {
+    return (
+      `${provider.label} пока не подключён: запуск локальных CLI-агентов — следующий этап. ` +
+      'Сообщение сохранено в переписке. Переключись на API в шапке чата — ' +
+      'там Claude через OpenRouter, и он умеет управлять движками.'
+    )
+  }
+
+  if (provider && !provider.configured) {
+    return `${provider.label} не настроен на сервере. Сообщение сохранено, выбери другую модель.`
+  }
+
+  if (!config.openRouterKey) {
+    return (
+      'Модель не подключена: на сервере не задан OPENROUTER_API_KEY. ' +
+      'Хранение при этом работает — сообщение сохранено в базе.'
+    )
+  }
+
+  return null
 }
 
 /** Аргументы приходят строкой и вполне могут оказаться битыми. */
