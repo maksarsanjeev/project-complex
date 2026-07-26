@@ -30,3 +30,6 @@ pnpm-debug.log*
 *.3dm
 *.blend
 *.blend[0-9]*
+
+# мусор от перенаправления вывода в PowerShell
+$null
