@@ -78,30 +78,34 @@ export const methods: Record<string, Method> = {
     },
   ],
 
+  // Цены за миллион токенов сверены со списком OpenRouter 2026-07-26.
   listProviders: (): ModelProvider[] => [
     {
-      id: 'claude-sonnet-api',
+      id: 'sonnet-5',
       provider: 'anthropic',
-      model: 'anthropic/claude-sonnet-4.5',
-      label: 'Claude Sonnet 4.5',
+      model: 'anthropic/claude-sonnet-5',
+      // $2 / $10, контекст 1М — рабочая лошадка на каждый день
+      label: 'Claude Sonnet 5',
       transport: 'api',
       configured: Boolean(config.openRouterKey),
       capabilities: ['text', 'vision', 'tools', 'long-context'],
     },
     {
-      id: 'claude-opus-api',
+      id: 'opus-5',
       provider: 'anthropic',
-      model: 'anthropic/claude-opus-4.1',
-      label: 'Claude Opus 4.1',
+      model: 'anthropic/claude-opus-5',
+      // $5 / $25, контекст 1М — втрое дешевле прежнего Opus 4.1 и умнее
+      label: 'Claude Opus 5',
       transport: 'api',
       configured: Boolean(config.openRouterKey),
       capabilities: ['text', 'vision', 'tools', 'long-context'],
     },
     {
-      id: 'gpt-api',
-      provider: 'openai',
-      model: 'openai/gpt-5',
-      label: 'GPT-5',
+      id: 'haiku-4-5',
+      provider: 'anthropic',
+      model: 'anthropic/claude-haiku-4.5',
+      // $1 / $5 — под мелкие проверки и роль критика на рендерах
+      label: 'Claude Haiku 4.5',
       transport: 'api',
       configured: Boolean(config.openRouterKey),
       capabilities: ['text', 'vision', 'tools'],

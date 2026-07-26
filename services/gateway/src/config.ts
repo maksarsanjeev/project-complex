@@ -21,8 +21,12 @@ export const config = {
   /** Ключ OpenRouter. Пока пуст — чат отвечает заглушкой. */
   openRouterKey: process.env.OPENROUTER_API_KEY ?? '',
 
-  /** Модель по умолчанию для живого чата. */
-  defaultModel: process.env.DEFAULT_MODEL ?? 'anthropic/claude-sonnet-4.5',
+  /**
+   * Модель по умолчанию. Sonnet 5 — миллион контекста за $2/$10 на миллион
+   * токенов: дешевле прежнего Sonnet 4.5 и новее его. Тяжёлые задачи по
+   * геометрии имеет смысл гонять на Opus 5, он выбирается в интерфейсе.
+   */
+  defaultModel: process.env.DEFAULT_MODEL ?? 'anthropic/claude-sonnet-5',
 
   /**
    * Пока нет входа, всё принадлежит одному пользователю. Схема базы при этом
