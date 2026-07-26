@@ -2,14 +2,22 @@
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2022"],
-    "module": "ESNext",
-    "moduleResolution": "bundler",
+    "module": "NodeNext",
+    "moduleResolution": "nodenext",
     "strict": true,
     "noUncheckedIndexedAccess": true,
-    "noEmit": true,
     "skipLibCheck": true,
     "isolatedModules": true,
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+
+    // Пакет собирается отдельно, чтобы другие проекты монорепы ссылались на
+    // его объявления, а не тянули исходники внутрь своего корня сборки.
+    // Здесь только типы, поэтому на выходе получается пустой JS — это нормально.
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "outDir": "dist",
+    "rootDir": "src"
   },
   "include": ["src"]
 }

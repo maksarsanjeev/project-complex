@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "NodeNext",
+    "moduleResolution": "nodenext",
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+
+    // Node исполняет TypeScript напрямую и требует настоящее расширение файла,
+    // поэтому импорты пишутся с .ts. При сборке они переписываются в .js —
+    // иначе собранный код искал бы несуществующие .ts рядом с собой.
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+
+    "outDir": "dist",
+    "rootDir": "src",
+    "sourceMap": true,
+    "types": ["node"]
+  },
+  "include": ["src"],
+  // Ссылка на собираемый пакет: типы берутся из его объявлений, поэтому
+  // исходники протокола не попадают в корень сборки gateway.
+  "references": [{ "path": "../../packages/protocol" }]
+}

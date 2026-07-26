@@ -303,6 +303,28 @@ export interface KnowledgeHit {
   score: number
 }
 
+/* ────────────────────────────── конверт веб-сокета ────────────────────────────── */
+
+/**
+ * Формат обмена между веб-мордой и gateway. Одно соединение, в нём вперемешку
+ * идут ответы на разные запросы — поэтому у каждого свой `id`.
+ *
+ * Обычный вызов: клиент шлёт `WireRequest`, сервер отвечает `result` или `error`.
+ * Потоковый (`sendMessage`, `runJob`): сервер шлёт цепочку `event` с тем же `id`
+ * и закрывает её `done`, а клиент собирает это обратно в асинхронный итератор.
+ */
+export interface WireRequest {
+  id: string
+  method: string
+  params?: unknown
+}
+
+export type WireResponse =
+  | { id: string; result: unknown }
+  | { id: string; error: { message: string } }
+  | { id: string; event: unknown }
+  | { id: string; done: true }
+
 /* ────────────────────────────── транспорт ────────────────────────────── */
 
 /**
