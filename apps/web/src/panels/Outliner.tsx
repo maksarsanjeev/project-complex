@@ -1,11 +1,10 @@
 import { Eye, EyeOff, Lock, Unlock } from 'lucide-react'
 import { useMemo } from 'react'
 import { t } from '../i18n'
-import { useEngines } from '../store/engine'
 import { useModel } from '../store/model'
 import { RenameField } from './RenameField'
 import { useViewport, type PartId } from '../store/viewport'
-import { rowsFromSnapshots, rowsFromTower, type SceneRow } from '../viewport/sceneTree'
+import { rowsFromSnapshots, type SceneRow } from '../viewport/sceneTree'
 import { IconButton, Label } from '../ui'
 import s from './panels.module.css'
 
@@ -21,7 +20,6 @@ import s from './panels.module.css'
  * Видимость и блокировка действуют на настоящую геометрию, а не на строку списка.
  */
 export function Outliner() {
-  const params = useViewport((v) => v.params)
   const hidden = useViewport((v) => v.hidden)
   const locked = useViewport((v) => v.locked)
   const selected = useViewport((v) => v.selected)
@@ -35,11 +33,12 @@ export function Outliner() {
   // Демо-башня существует только для движков с параметрикой — там же, где
   // панель «параметры модели». С привязанным SketchUp сцена пуста, пока модель
   // не забрана: показывать чужую демо-модель значит выдавать её за проект.
-  const parametric = useEngines((e) => e.boundEngine) !== 'sketchup'
 
   const rows = useMemo(
-    () => (snapshots.length ? rowsFromSnapshots(snapshots) : parametric ? rowsFromTower(params) : []),
-    [snapshots, parametric, params],
+    // Нет снимка — нет и дерева. Раньше сюда подставлялись узлы демо-башни,
+    // и новый проект открывался со списком деталей, которых никто не строил.
+    () => (snapshots.length ? rowsFromSnapshots(snapshots) : []),
+    [snapshots],
   )
 
   const { visible, total } = useMemo(() => {

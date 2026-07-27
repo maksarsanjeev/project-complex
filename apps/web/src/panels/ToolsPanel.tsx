@@ -23,7 +23,7 @@ import { ENGINE_LABEL, useModel } from '../store/model'
 import { useSession } from '../store/session'
 import { useViewport } from '../store/viewport'
 import { IdChip, Label, NumField, Section, StatusMark, type MarkState } from '../ui'
-import { isParamLocked, rowsFromSnapshots, rowsFromTower } from '../viewport/sceneTree'
+import { isParamLocked, rowsFromSnapshots } from '../viewport/sceneTree'
 import { ParamField } from './ParamField'
 import s from './panels.module.css'
 
@@ -111,15 +111,15 @@ function NodeInspector() {
 
 /** Свойства выделенной части модели — значения настоящие, из геометрии сцены. */
 function PartInspector() {
-  const params = useViewport((v) => v.params)
   const selected = useViewport((v) => v.selected)
   // Ищем в том же дереве, что показывает аутлайнер, — иначе выделение
   // настоящей части не находилось бы среди демонстрационных.
   const snapshots = useModel((m) => m.snapshots)
-  const parametric = useEngines((e) => e.boundEngine) !== 'sketchup'
   const rows = useMemo(
-    () => (snapshots.length ? rowsFromSnapshots(snapshots) : parametric ? rowsFromTower(params) : []),
-    [snapshots, parametric, params],
+    // Нет снимка — нет и дерева. Раньше сюда подставлялись узлы демо-башни,
+    // и новый проект открывался со списком деталей, которых никто не строил.
+    () => (snapshots.length ? rowsFromSnapshots(snapshots) : []),
+    [snapshots],
   )
   if (selected.length > 1) {
     // Разбирать по полям набор объектов бессмысленно — показываем состав.

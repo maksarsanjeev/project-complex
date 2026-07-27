@@ -1,18 +1,10 @@
 import { GizmoHelper, GizmoViewport, Grid, OrbitControls, OrthographicCamera, PerspectiveCamera } from '@react-three/drei'
 import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useLayout } from '../store/layout'
-import { useViewport, type PartId } from '../store/viewport'
-import {
-  MM,
-  SLAB_THICKNESS,
-  buildRibMatrices,
-  buildSkin,
-  buildSlabMatrices,
-  towerHeight,
-  towerRing,
-} from './geometry'
+import { useViewport } from '../store/viewport'
+import { MM, towerHeight } from './geometry'
 import { MM as SCENE_MM, useModel } from '../store/model'
 import { useLoadedModel } from './loader'
 
@@ -293,130 +285,6 @@ function RealModel() {
   )
 }
 
-/* ────────────────────────── башня ────────────────────────── */
-
-export function Tower() {
-  const params = useViewport((s) => s.params)
-  const selected = useViewport((s) => s.selected)
-  const select = useViewport((s) => s.select)
-  const mode = useViewport((s) => s.mode)
-  const hidden = useViewport((s) => s.hidden)
-  const locked = useViewport((s) => s.locked)
-  const pal = usePalette()
-
-  const skin = useMemo(() => buildSkin(params), [params])
-  const skinEdges = useMemo(() => new THREE.EdgesGeometry(skin, 25), [skin])
-
-  /** Горизонтальные контуры этажей — они и дают чертёжный характер. */
-  const ringLines = useMemo(() => {
-    const pos: number[] = []
-    for (let f = 0; f <= params.floors; f++) {
-      const ring = towerRing(params, f)
-      for (let k = 0; k < params.sides; k++) {
-        const a = ring[k]
-        const b = ring[(k + 1) % params.sides]
-        pos.push(a.x, a.y, a.z, b.x, b.y, b.z)
-      }
-    }
-    const g = new THREE.BufferGeometry()
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
-    return g
-  }, [params])
-
-  const slabMatrices = useMemo(
-    () => buildSlabMatrices(params, SLAB_THICKNESS * MM),
-    [params],
-  )
-  const ribMatrices = useMemo(() => buildRibMatrices(params), [params])
-
-  const slabsRef = useRef<THREE.InstancedMesh>(null)
-  const ribsRef = useRef<THREE.InstancedMesh>(null)
-
-  useLayoutEffect(() => {
-    const mesh = slabsRef.current
-    if (!mesh) return
-    slabMatrices.forEach((m, i) => mesh.setMatrixAt(i, m))
-    mesh.instanceMatrix.needsUpdate = true
-    mesh.computeBoundingSphere()
-  }, [slabMatrices])
-
-  useLayoutEffect(() => {
-    const mesh = ribsRef.current
-    if (!mesh) return
-    ribMatrices.forEach((m, i) => mesh.setMatrixAt(i, m))
-    mesh.instanceMatrix.needsUpdate = true
-    mesh.computeBoundingSphere()
-  }, [ribMatrices])
-
-  useEffect(() => () => void skin.dispose(), [skin])
-  useEffect(() => () => void skinEdges.dispose(), [skinEdges])
-  useEffect(() => () => void ringLines.dispose(), [ringLines])
-
-  // Заблокированной части просто не даём обработчика — она перестаёт выделяться.
-  const pick = (part: PartId) =>
-    locked[part]
-      ? undefined
-      : (e: ThreeEvent<MouseEvent>) => {
-          e.stopPropagation()
-          select(part)
-        }
-
-  const r = params.radius * MM
-  const h = towerHeight(params)
-  // В каркасном режиме рёбра дублировали бы сетку — гасим их.
-  const showEdges = mode !== 'wire'
-
-  return (
-    <group>
-      {/* ядро жёсткости */}
-      <mesh position={[0, h / 2, 0]} visible={!hidden.core} onClick={pick('core')}>
-        <cylinderGeometry args={[r * 0.34, r * 0.34, h, params.sides]} />
-        <SurfaceMaterial tone="alt" active={selected.includes('core')} />
-      </mesh>
-
-      {/* перекрытия */}
-      <instancedMesh
-        key={`slabs-${slabMatrices.length}-${params.sides}`}
-        ref={slabsRef}
-        args={[undefined, undefined, slabMatrices.length]}
-        visible={!hidden.slabs}
-        onClick={pick('slabs')}
-      >
-        <cylinderGeometry args={[r, r, 1, params.sides]} />
-        <SurfaceMaterial tone="base" active={selected.includes('slabs')} />
-      </instancedMesh>
-
-      {/* диагрид */}
-      <instancedMesh
-        key={`ribs-${ribMatrices.length}`}
-        ref={ribsRef}
-        args={[undefined, undefined, ribMatrices.length]}
-        visible={!hidden.diagrid}
-        onClick={pick('diagrid')}
-      >
-        <boxGeometry args={[params.ribSize * MM, 1, params.ribSize * MM]} />
-        <SurfaceMaterial tone="alt" active={selected.includes('diagrid')} />
-      </instancedMesh>
-
-      {/* витраж */}
-      <mesh geometry={skin} visible={!hidden.glass} onClick={pick('glass')}>
-        <SurfaceMaterial tone="glass" active={selected.includes('glass')} />
-      </mesh>
-
-      {/* Контуры принадлежат своим частям и гаснут вместе с ними. */}
-      {showEdges ? (
-        <>
-          <lineSegments geometry={skinEdges} visible={!hidden.glass}>
-            <lineBasicMaterial color={pal.edge} transparent opacity={0.5} />
-          </lineSegments>
-          <lineSegments geometry={ringLines} visible={!hidden.slabs}>
-            <lineBasicMaterial color={pal.edge} transparent opacity={0.35} />
-          </lineSegments>
-        </>
-      ) : null}
-    </group>
-  )
-}
 
 /* ────────────────────────── сцена ────────────────────────── */
 
