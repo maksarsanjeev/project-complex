@@ -90,7 +90,15 @@ function snapshotCall(engine: EngineId): { command: string; params: Record<strin
 function parseSnapshot(engine: EngineId, raw: unknown): Record<string, unknown> {
   if (engine !== 'rhino') return raw as Record<string, unknown>
 
-  const box = raw as { output?: unknown; result?: unknown }
+  const box = raw as { output?: unknown; result?: unknown; success?: boolean; message?: unknown }
+
+  // Скрипт упал внутри Rhino: причина лежит в message, а output пуст. Без этой
+  // ветки наружу уходило «Rhino не вернул снимок:» с пустотой после двоеточия —
+  // сообщение, по которому нечего чинить.
+  if (box?.success === false) {
+    throw new Error(`Снимок Rhino не собрался: ${String(box.message ?? 'без объяснения')}`)
+  }
+
   const printed = typeof box?.output === 'string' ? box.output : String(box?.result ?? '')
   const start = printed.indexOf('{')
   if (start < 0) throw new Error(`Rhino не вернул снимок: ${printed.slice(0, 200)}`)

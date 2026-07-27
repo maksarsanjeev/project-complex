@@ -44,6 +44,30 @@ rg = Rhino.Geometry
 # длине строки это экономит вдвое.
 TRIANGLE_LIMIT = 80000
 
+EMPTY_GUID = "00000000-0000-0000-0000-000000000000"
+
+# Округления мало: в IronPython 2 round() укорачивает ЗНАЧЕНИЕ, а печатает его
+# repr со всеми семнадцатью знаками — «-0.35599999999999998» вместо «-0.356».
+# На сборке это раздуло снимок до 54 мегабайт. Подменяем печать чисел, а
+# хвостовые нули срезаем: «700.0» это те же четыре лишних знака на каждую
+# координату.
+def _short_float(value):
+    text = "%.3f" % value
+    text = text.rstrip("0").rstrip(".")
+    return text if text not in ("", "-") else "0"
+
+
+json.encoder.FLOAT_REPR = _short_float
+
+# Вставка блока называется по-разному в разных версиях RhinoCommon, и обращение
+# к несуществующему имени роняет весь снимок целиком. Поэтому тип ищем, а не
+# называем: нет его — значит блоков в этой версии просто не распознаем.
+BLOCK_TYPE = getattr(rg, "InstanceReferenceGeometry", None) or getattr(rg, "InstanceReference", None)
+
+
+def _is_block(geometry):
+    return BLOCK_TYPE is not None and isinstance(geometry, BLOCK_TYPE)
+
 
 def _mm_scale():
     """Во сколько раз единица документа больше миллиметра."""
@@ -61,7 +85,10 @@ def _layer_tree():
         node_id = "layer:%s" % layer.FullPath
         by_id[layer.Id] = node_id
         parent = None
-        if layer.ParentLayerId != Rhino.DocObjects.Layer.RootId:
+        # Корневой слой узнаём по пустому GUID родителя. Именованной константы
+        # для этого нет: Layer.RootId существует не во всех версиях Rhino, и на
+        # 8.x запрос снимка падал именно здесь.
+        if str(layer.ParentLayerId) != EMPTY_GUID:
             parent_layer = sc.doc.Layers.FindId(layer.ParentLayerId)
             if parent_layer:
                 parent = "layer:%s" % parent_layer.FullPath
@@ -98,7 +125,11 @@ def _mesh_of(geometry):
         meshes = [geometry]
     elif isinstance(geometry, (rg.Brep, rg.Extrusion)):
         brep = geometry.ToBrep() if isinstance(geometry, rg.Extrusion) else geometry
-        parameters = rg.MeshingParameters.Default
+        # Грубая сетка, а не «по умолчанию». Снимок нужен, чтобы СМОТРЕТЬ и
+        # выделять, а не чтобы по нему работать: точная сетка на этой же сборке
+        # дала 20 мегабайт текста, грубая — впятеро меньше при неотличимом на
+        # глаз силуэте. Считать по снимку нечего, для этого есть rh_inspect.
+        parameters = getattr(rg.MeshingParameters, "Coarse", None) or rg.MeshingParameters.Default
         made = rg.Mesh.CreateFromBrep(brep, parameters)
         meshes = list(made) if made else []
     elif isinstance(geometry, rg.SubD):
@@ -218,7 +249,7 @@ def snapshot():
             node["tag"] = layer.FullPath
         if groups:
             node["memberships"] = groups
-        if isinstance(geometry, rg.InstanceReference):
+        if _is_block(geometry):
             definition = sc.doc.InstanceDefinitions.FindId(geometry.ParentIdefId)
             if definition:
                 node["definition"] = definition.Name
@@ -231,6 +262,11 @@ def snapshot():
             positions, normals, count = _mesh_of(geometry)
             if count:
                 total += count
+                # Потолок проверяется ДО объекта, поэтому последний способен
+                # его перешагнуть. Отмечаем это сразу: иначе снимок молча
+                # выходит вдвое больше обещанного.
+                if total >= TRIANGLE_LIMIT:
+                    truncated = True
                 node["triangles"] = count
                 parts.append({
                     "nodeId": node_id,
@@ -265,7 +301,7 @@ def snapshot():
 
 
 def _kind_of(geometry):
-    if isinstance(geometry, rg.InstanceReference):
+    if _is_block(geometry):
         return "block"
     if isinstance(geometry, rg.Mesh):
         return "mesh"
