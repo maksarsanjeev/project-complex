@@ -187,6 +187,64 @@ export interface ToolOutcome {
 }
 
 /**
+ * Снимок вьюпорта внутри ответа инструмента.
+ *
+ * Поле называется по-разному у каждого моста: у нашего SketchUp это
+ * `base64` + `mime`, у rhinomcp — `image_data`. Узнавать надо ВСЕ формы, и вот
+ * почему это не мелочь: пропущенная картинка попадает в переписку ТЕКСТОМ и
+ * пересылается заново на каждом следующем круге инструментов.
+ *
+ * Измерено на живом стеллаже: один непойманный снимок Rhino раздул ход до
+ * 326 527 токенов ввода и 0,70 доллара — вместо примерно пяти тысяч и цента.
+ */
+function extractImage(
+  result: unknown,
+): { mime: string; base64: string; note: string } | null {
+  if (!result || typeof result !== 'object') return null
+  const r = result as Record<string, unknown>
+
+  const candidates: Array<[unknown, string]> = [
+    [r.base64, typeof r.mime === 'string' ? r.mime : 'image/png'],
+    [r.image_data, 'image/png'],
+    [r.imageData, 'image/png'],
+  ]
+
+  for (const [value, mime] of candidates) {
+    if (typeof value !== 'string' || value.length < 512) continue
+    const size = Math.round((value.length * 3) / 4 / 1024)
+    const w = typeof r.width === 'number' ? r.width : undefined
+    const h = typeof r.height === 'number' ? r.height : undefined
+    return {
+      mime,
+      base64: value,
+      note: `снимок вьюпорта${w && h ? ` ${w}×${h}` : ''}, ${size} КБ — смотри следующим сообщением`,
+    }
+  }
+  return null
+}
+
+/**
+ * Предохранитель на длину ответа инструмента.
+ *
+ * Список объектов большой модели или сводка документа тоже бывают на сотни
+ * килобайт, и каждый такой ответ остаётся в переписке до конца хода. Обрезаем
+ * с честной пометкой: модель должна знать, что видит не всё, а не думать, что
+ * объектов ровно столько.
+ */
+const RESULT_LIMIT = 12_000
+
+function shorten(text: string): string {
+  if (text.length <= RESULT_LIMIT) return text
+  return (
+    text.slice(0, RESULT_LIMIT) +
+    `
+
+[…обрезано: ответ ${Math.round(text.length / 1024)} КБ, показано первые ` +
+    `${Math.round(RESULT_LIMIT / 1024)} КБ. Запроси нужное точнее — фильтром или по частям.]`
+  )
+}
+
+/**
  * Выполняет вызов, придуманный моделью. Ошибки НЕ бросает: неудача — это тоже
  * результат, который модель должна прочитать и как-то на него ответить.
  * Брошенное исключение оборвало бы весь ход и оставило пользователя без объяснения.
@@ -216,24 +274,22 @@ export async function runTool(name: string, args: Record<string, unknown>): Prom
   try {
     const result = await invoke({ engine: tool.engine, instance, command, params })
 
-    // Снимок вьюпорта приходит в base64 внутри ответа. В переписку с моделью
-    // он идёт картинкой, а в текст результата — только сведения о нём: иначе
-    // мегабайт base64 осел бы в истории и в базе.
-    const shot = result as { base64?: string; mime?: string; width?: number; height?: number }
-    if (shot?.base64 && shot.mime?.startsWith('image/')) {
+    // Картинку вынимаем ДО того, как ответ станет текстом.
+    const image = extractImage(result)
+    if (image) {
       return {
         ok: true,
-        content: `снимок вьюпорта ${shot.width}×${shot.height}`,
+        content: image.note,
         code,
         durationMs: Date.now() - started,
         engine: tool.engine,
-        image: { mime: shot.mime, base64: shot.base64 },
+        image: { mime: image.mime, base64: image.base64 },
       }
     }
 
     return {
       ok: true,
-      content: typeof result === 'string' ? result : JSON.stringify(result),
+      content: shorten(typeof result === 'string' ? result : JSON.stringify(result)),
       code,
       durationMs: Date.now() - started,
       engine: tool.engine,

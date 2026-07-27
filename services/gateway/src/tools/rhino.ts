@@ -196,7 +196,10 @@ export const RHINO_TOOLS: ToolDef[] = [
     name: 'rh_capture_viewport',
     engine: 'rhino',
     command: 'capture_viewport',
-    description: 'Снимок вида — чтобы посмотреть на результат, а не только на цифры.',
+    description:
+      'Посмотреть на модель: снимок вида Rhino. Картинка возвращается тебе, и ты её ВИДИШЬ. ' +
+      'Пользуйся после построения, чтобы проверить результат глазами: габарит может сойтись, ' +
+      'а детали оказаться развёрнутыми или стоять не на месте.',
     parameters: {
       type: 'object',
       properties: {
