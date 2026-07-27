@@ -202,9 +202,9 @@ export const RHINO_TOOLS: ToolDef[] = [
       'хотя геометрия на месте.',
     parameters: { type: 'object', properties: {} },
     mapParams: () => ({
-      code: 'import rhinoscriptsyntax as rs
-rs.ZoomExtents(all=True)
-print("вид вписан")',
+      code: ['import rhinoscriptsyntax as rs', 'rs.ZoomExtents(all=True)', 'print("вид вписан")'].join(
+        '\n',
+      ),
     }),
   },
   {
