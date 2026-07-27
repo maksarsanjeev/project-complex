@@ -209,6 +209,16 @@ export async function* runClaudeCode(input: {
         }
 
         if (message.type === 'result') {
+          // Чем ответил API, а не что мы просили. Стартовое сообщение SDK
+          // повторяет принятую настройку и подтверждением не является: имя
+          // могло не совпасть с его каталогом, и подмену там не видно.
+          // modelUsage собирается из ответов API — вот это факт.
+          const actual = Object.keys(
+            ('modelUsage' in message ? message.modelUsage : null) ?? {},
+          )
+          if (actual.length) {
+            console.log(`[SDK ${nowIso()}] ответил ${actual.join(', ')}`)
+          }
           // Расход лежит вложенным, в том же виде, что у Anthropic API.
           const used = ('usage' in message ? message.usage : null) as {
             input_tokens?: number
