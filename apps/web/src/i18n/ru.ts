@@ -183,6 +183,7 @@ export const ru = {
   'statusbar.tris': 'полигоны',
   'statusbar.units': 'ед',
   'statusbar.queue': 'очередь',
+  'statusbar.spent': 'расход',
   'statusbar.agent': 'агент',
   'statusbar.mock': 'мок-транспорт',
 

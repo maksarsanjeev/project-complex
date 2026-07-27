@@ -60,6 +60,7 @@ export const useSession = create<SessionState>()((set, get) => ({
     // Модель предыдущей сессии убираем СРАЗУ, не дожидаясь ответа сервера:
     // иначе на время загрузки в новом проекте висит чужая геометрия.
     useModel.getState().adopt([])
+    useChat.getState().resetUsage()
     const state = await transport.openSession(id)
     set({
       activeId: state.session.id,
@@ -168,6 +169,10 @@ export const useSession = create<SessionState>()((set, get) => ({
             m.id === event.messageId ? { ...m, streaming: false } : m,
           ),
         }))
+        break
+
+      case 'usage':
+        useChat.getState().addUsage(event.usage)
         break
 
       case 'ask':

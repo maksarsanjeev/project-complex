@@ -22,6 +22,7 @@ export function StatusBar() {
   const engines = useEngines((e) => e.engines)
   const bound = useEngines((e) => e.boundEngine)
   const sending = useChat((c) => c.sending)
+  const spent = useChat((c) => c.spent)
   const chatMode = useChat((c) => c.mode)
   const loading = useSession((x) => x.loading)
 
@@ -42,6 +43,18 @@ export function StatusBar() {
           label={t('statusbar.agent')}
           value={sending ? `${chatMode} · ${t('status.running')}` : `${chatMode} · ${t('status.idle')}`}
         />
+        {/* Расход по сессии. Доля из кэша показана отдельно: без неё нельзя
+            понять, работает ли кэширование подсказки вообще. */}
+        {spent.prompt ? (
+          <Item
+            label={t('statusbar.spent')}
+            value={
+              `${(spent.prompt + spent.completion).toLocaleString('ru-RU')} тк` +
+              (spent.cached ? ` · кэш ${Math.round((spent.cached / spent.prompt) * 100)}%` : '') +
+              (spent.cost ? ` · $${spent.cost.toFixed(4)}` : '')
+            }
+          />
+        ) : null}
         <Item label={t('statusbar.queue')} value={loading ? '1' : '0'} />
         {isMockTransport ? (
           <div className={s.statusItem}>

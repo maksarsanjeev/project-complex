@@ -215,6 +215,15 @@ export type ChatEvent =
    * делала за человека — и иногда не тот.
    */
   | { type: 'ask'; messageId: string; question: string; options?: string[] }
+  /**
+   * Сколько стоил ход: токены ввода, ответа и доля, взятая из кэша.
+   * Показывается в статусбаре — стоимость проекта видна сразу, а не по счёту.
+   */
+  | {
+      type: 'usage'
+      messageId: string
+      usage: { prompt: number; completion: number; cached: number; cost?: number }
+    }
   | { type: 'message-end'; messageId: string }
   | { type: 'error'; message: string }
 

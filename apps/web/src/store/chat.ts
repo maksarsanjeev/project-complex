@@ -11,6 +11,11 @@ interface ChatState {
    * Живут до следующего сообщения: ответил — выбор снят.
    */
   pendingOptions: string[]
+  /**
+   * Расход по текущей сессии. Складывается по ходам: стоимость проекта видно
+   * сразу, а не в конце месяца по счёту.
+   */
+  spent: { prompt: number; completion: number; cached: number; cost: number }
   draft: string
   /** Как подключена модель: прямой вызов по ключу или локальный CLI-агент. */
   mode: ProviderTransport
@@ -23,12 +28,15 @@ interface ChatState {
   send: () => Promise<void>
   stop: () => void
   setPendingOptions: (options: string[]) => void
+  addUsage: (u: { prompt: number; completion: number; cached: number; cost?: number }) => void
+  resetUsage: () => void
 }
 
 let cancelled = false
 
 export const useChat = create<ChatState>()((set, get) => ({
   pendingOptions: [],
+  spent: { prompt: 0, completion: 0, cached: 0, cost: 0 },
   draft: '',
   mode: 'api',
   modelId: 'claude-opus-5-api',
@@ -85,6 +93,18 @@ export const useChat = create<ChatState>()((set, get) => ({
   },
 
   setPendingOptions: (pendingOptions) => set({ pendingOptions }),
+
+  addUsage: (u) =>
+    set((s) => ({
+      spent: {
+        prompt: s.spent.prompt + u.prompt,
+        completion: s.spent.completion + u.completion,
+        cached: s.spent.cached + u.cached,
+        cost: s.spent.cost + (u.cost ?? 0),
+      },
+    })),
+
+  resetUsage: () => set({ spent: { prompt: 0, completion: 0, cached: 0, cost: 0 } }),
 }))
 
 /**

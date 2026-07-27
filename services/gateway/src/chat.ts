@@ -42,13 +42,19 @@ interface WireToolCall {
   function: { name: string; arguments: string }
 }
 
-/** Кусок содержимого: текст или картинка. Картинки бывают только у роли user. */
+/**
+ * Кусок содержимого: текст или картинка. Картинки бывают только у роли user.
+ *
+ * `cache_control` помечает границу кэша подсказки. Всё, что ДО пометки
+ * включительно, провайдер запоминает и в следующих запросах берёт из кэша —
+ * примерно вдесятеро дешевле обычного ввода.
+ */
 type WireContent =
-  | { type: 'text'; text: string }
+  | { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }
   | { type: 'image_url'; image_url: { url: string } }
 
 type WireMessage =
-  | { role: 'system'; content: string }
+  | { role: 'system'; content: string | WireContent[] }
   | { role: 'user'; content: string | WireContent[] }
   | { role: 'assistant'; content: string | null; tool_calls?: WireToolCall[] }
   | { role: 'tool'; tool_call_id: string; content: string }
@@ -132,6 +138,9 @@ export async function* streamAnswer(input: {
   let text = ''
   let asked = false
   const toolCalls: ToolCall[] = []
+  // Расход копится по всем кругам хода: один вопрос пользователя может стоить
+  // нескольких обращений к модели, и считать надо ход целиком.
+  const spent: Usage = { prompt: 0, completion: 0, cached: 0, cost: 0 }
 
   // Модель, которую нельзя вызвать, лучше назвать вслух, чем отправить запрос
   // и вернуть невнятную ошибку провайдера. Так выходило с выбором CLI: его имя
@@ -153,9 +162,26 @@ export async function* streamAnswer(input: {
   const conversation: WireMessage[] = [
     {
       role: 'system',
-      content: [SYSTEM_PROMPT, engineSummary(), describeSelection(input.selection)]
-        .filter(Boolean)
-        .join('\n\n'),
+      /*
+        Системное сообщение разбито НАДВОЕ ради кэша, и порядок здесь не косметика.
+
+        Кэш работает по совпадающему НАЧАЛУ запроса: провайдер запоминает всё до
+        пометки и в следующий раз не считает заново — примерно вдесятеро дешевле.
+        Описания инструментов идут в запросе перед системным сообщением, поэтому
+        пометка на первом блоке кэширует и их — а это самая тяжёлая и самая
+        неизменная часть, около 3 600 токенов на каждом ходу.
+
+        Во второй блок уходит всё, что меняется от сообщения к сообщению:
+        состояние движков и текущее выделение. Будь они в первом, кэш промахивался
+        бы каждый раз, когда человек выделил другой объект, — то есть всегда.
+      */
+      content: [
+        { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
+        {
+          type: 'text',
+          text: [engineSummary(), describeSelection(input.selection)].filter(Boolean).join('\n\n'),
+        },
+      ],
     },
     ...buildHistory(input.sessionId),
   ]
@@ -170,6 +196,11 @@ export async function* streamAnswer(input: {
           result.text += piece.text
           text += piece.text
           yield { type: 'token', messageId, text: piece.text }
+        } else if (piece.kind === 'usage') {
+          spent.prompt += piece.usage.prompt
+          spent.completion += piece.usage.completion
+          spent.cached += piece.usage.cached
+          spent.cost = (spent.cost ?? 0) + (piece.usage.cost ?? 0)
         } else {
           result.calls = piece.calls
         }
@@ -270,6 +301,16 @@ export async function* streamAnswer(input: {
   // вместе с ним — иначе после перезагрузки страницы от работы движка не
   // осталось бы и следа.
   appendMessage(input.sessionId, { ...message, content: text, streaming: false, toolCalls })
+
+  // Доля из кэша — единственный способ увидеть, работает ли кэширование:
+  // без него cached всегда 0, и это видно в логе сразу, а не по счёту в конце месяца.
+  const share = spent.prompt ? Math.round((spent.cached / spent.prompt) * 100) : 0
+  console.log(
+    `[расход ${nowIso()}] ввод ${spent.prompt} (из кэша ${spent.cached}, ${share}%), ` +
+      `ответ ${spent.completion}${spent.cost ? `, $${spent.cost.toFixed(5)}` : ''}`,
+  )
+
+  yield { type: 'usage', messageId, usage: spent }
   yield { type: 'message-end', messageId }
 }
 
@@ -357,14 +398,38 @@ function parseArguments(raw: string): Record<string, unknown> {
 
 /* ────────────────────────── один запрос к модели ────────────────────────── */
 
-type RoundPiece = { kind: 'text'; text: string } | { kind: 'calls'; calls: WireToolCall[] }
+type RoundPiece =
+  | { kind: 'text'; text: string }
+  | { kind: 'calls'; calls: WireToolCall[] }
+  /** Сколько стоил круг. Приходит последним кадром потока. */
+  | { kind: 'usage'; usage: Usage }
+
+/**
+ * Расход по одному обращению к модели.
+ *
+ * `cached` — сколько токенов ввода взято из кэша вместо пересчёта. Именно эта
+ * цифра показывает, работает ли кэширование подсказки: без него она всегда 0.
+ */
+export interface Usage {
+  prompt: number
+  completion: number
+  cached: number
+  cost?: number
+}
 
 async function* streamRound(
   messages: WireMessage[],
   model: string,
   tools: ReturnType<typeof availableTools>,
 ): AsyncGenerator<RoundPiece> {
-  const body: Record<string, unknown> = { model, stream: true, messages }
+  const body: Record<string, unknown> = {
+    model,
+    stream: true,
+    messages,
+    // Без этого расход в потоке не приходит вовсе, и померить кэш нечем.
+    stream_options: { include_usage: true },
+    usage: { include: true },
+  }
   // Пустой список инструментов отправлять нельзя: часть провайдеров считает
   // это ошибкой. Нет движков — нет и поля.
   if (tools.length) body.tools = toWireTools(tools)
@@ -420,6 +485,12 @@ async function* readServerSentEvents(body: ReadableStream<Uint8Array>): AsyncGen
 
       try {
         const parsed = JSON.parse(payload) as {
+          usage?: {
+            prompt_tokens?: number
+            completion_tokens?: number
+            cost?: number
+            prompt_tokens_details?: { cached_tokens?: number }
+          }
           choices?: Array<{
             delta?: {
               content?: string
@@ -430,6 +501,18 @@ async function* readServerSentEvents(body: ReadableStream<Uint8Array>): AsyncGen
               }>
             }
           }>
+        }
+
+        if (parsed.usage) {
+          yield {
+            kind: 'usage',
+            usage: {
+              prompt: parsed.usage.prompt_tokens ?? 0,
+              completion: parsed.usage.completion_tokens ?? 0,
+              cached: parsed.usage.prompt_tokens_details?.cached_tokens ?? 0,
+              cost: parsed.usage.cost,
+            },
+          }
         }
 
         const delta = parsed.choices?.[0]?.delta

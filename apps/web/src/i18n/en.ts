@@ -176,6 +176,7 @@ export const en: Record<I18nKey, string> = {
   'statusbar.tris': 'polygons',
   'statusbar.units': 'units',
   'statusbar.queue': 'queue',
+  'statusbar.spent': 'spent',
   'statusbar.agent': 'agent',
   'statusbar.mock': 'mock transport',
 
