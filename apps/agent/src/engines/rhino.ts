@@ -17,24 +17,24 @@ const CONNECT_TIMEOUT_MS = 3_000
 /** Одно окно Rhino: несколько документов сразу оно всё равно не держит. */
 export async function discover(): Promise<EngineInstance[]> {
   try {
+    // Сведения о документе лежат ВНУТРИ meta_data, а не на верхнем уровне.
+    // Читал я их сверху — и получал undefined в единицах. Инструменты при этом
+    // публиковались: неизвестные единицы проходят проверку. То есть проверка,
+    // написанная ради защиты от чужого масштаба, молча пропускала всё.
     const summary = (await call('get_document_summary', {})) as {
-      unit_system?: string
-      units?: string
-      name?: string
-      path?: string
-      version?: string
+      meta_data?: { name?: string | null; path?: string | null; units?: string | null }
     }
+    const meta = summary.meta_data ?? {}
 
     return [
       {
         id: 'rhino',
         port: PORT,
-        title: summary.name || 'Без имени',
-        path: summary.path,
-        version: summary.version,
+        title: meta.name || 'Без имени',
+        path: meta.path ?? undefined,
         // Единица документа — то, ради чего мы вообще сюда ходим при опросе:
         // от неё зависит, публиковать ли инструменты Rhino.
-        units: summary.unit_system ?? summary.units,
+        units: meta.units ?? undefined,
       },
     ]
   } catch {
