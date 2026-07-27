@@ -91,6 +91,15 @@ export async function* runClaudeCode(input: {
   let lastTool = ''
   /** Чекпойнт за ход бывает один: дальше решает человек. */
   let checkpoint = false
+  /**
+   * Сколько объектов было в сцене ДО начала хода.
+   *
+   * Сравнивать с нулём оказалось нельзя: в сцене обычно лежит чужая работа, и
+   * страховка срабатывала на ней — на первом же вызове, до того как модель
+   * успевала что-либо построить. Показывать человеку чужую модель как
+   * «результат прохода» бессмысленно.
+   */
+  let objectsBefore = -1
 
   const queue = new PieceQueue()
   const defs = availableTools()
@@ -143,8 +152,12 @@ export async function* runClaudeCode(input: {
         //
         // Спрашиваем состояние отдельным дешёвым вызовом и только после
         // строящих инструментов: у McNeel `get_context` для того и заведён.
-        if (!checkpoint && BUILDING.has(item.function.name) && (await hasGeometry())) {
-          checkpoint = true
+        if (!checkpoint && BUILDING.has(item.function.name)) {
+          const now = await objectCount()
+          if (objectsBefore < 0) objectsBefore = now
+          // Стоп — на ПРИРОСТЕ, а не на наличии: важно, что модель что-то
+          // сделала, а не что в сцене вообще что-то есть.
+          else if (now > objectsBefore) checkpoint = true
         }
 
         // Картинка идёт блоком ответа, а не отдельным сообщением: MCP это
@@ -236,6 +249,15 @@ export async function* runClaudeCode(input: {
             stoppedByBudget = true
             await run.interrupt().catch(() => {})
             await takeSnapshot('rhino', undefined, input.sessionId).catch(() => null)
+            // Вопрос обязателен. Без него ход просто обрывался: ни карточки,
+            // ни текста — модель молча замолкала, и понять это было нельзя.
+            queue.push({
+              kind: 'ask',
+              question:
+                'Проход завершён — модель загружена во вьюпорт, посмотрите. ' +
+                'Продолжать итерации или остановиться?',
+              options: CHOICES,
+            })
             queue.push({ kind: 'usage', usage: { ...spent } })
             break
           }
@@ -352,13 +374,13 @@ const CHOICES = ['Продолжить итерации', 'Оставить ка
 const BUILDING = new Set(['mc_run_python', 'mc_run_command', 'rh_run_python', 'rh_create_objects'])
 
 /**
- * Есть ли в документе хоть что-нибудь.
+ * Сколько объектов в документе. Минус один — спросить не удалось.
  *
  * Отдельный дешёвый вызов вместо снимка: снимок Rhino — это мегабайты, и
  * дёргать его после каждого скрипта значило бы платить за проверку дороже,
  * чем за работу. `get_context` заведён у McNeel ровно для такого.
  */
-async function hasGeometry(): Promise<boolean> {
+async function objectCount(): Promise<number> {
   try {
     const raw = (await agents.invoke({
       engine: 'rhino',
@@ -366,10 +388,10 @@ async function hasGeometry(): Promise<boolean> {
       params: {},
     })) as { output?: string }
     const box = JSON.parse(String(raw?.output ?? '{}')) as { document?: { objectCount?: number } }
-    return (box.document?.objectCount ?? 0) > 0
+    return box.document?.objectCount ?? 0
   } catch {
     // Не спросилось — не повод обрывать работу. Останется бюджетный крючок.
-    return false
+    return -1
   }
 }
 
