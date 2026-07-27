@@ -71,10 +71,9 @@ const PREFIX: Record<EngineId, string> = { sketchup: 'su', rhino: 'rh', blender:
  */
 function snapshotCall(engine: EngineId): { command: string; params: Record<string, unknown> } {
   if (engine === 'rhino') {
-    return {
-      command: 'execute_rhinoscript_python_code',
-      params: { code: rhinoScript('snapshot.py') },
-    }
+    // Команда наша, не плагина: агент выполнит скрипт и прочитает файл,
+    // который тот напишет. Через печать плагина такой объём не проходит.
+    return { command: 'complex_snapshot', params: { code: rhinoScript('snapshot.py') } }
   }
   return { command: 'GET /model/mesh', params: {} }
 }
@@ -87,36 +86,15 @@ function snapshotCall(engine: EngineId): { command: string; params: Record<strin
  * передача, и об этом надо сказать словами, иначе на экране будет пустая сцена
  * без объяснения.
  */
-const OPEN_MARK = '<<<COMPLEX-SNAPSHOT'
-const CLOSE_MARK = 'COMPLEX-SNAPSHOT>>>'
-
 function parseSnapshot(engine: EngineId, raw: unknown): Record<string, unknown> {
   if (engine !== 'rhino') return raw as Record<string, unknown>
 
-  const box = raw as { output?: unknown; result?: unknown; success?: boolean; message?: unknown }
-
-  // Скрипт упал внутри Rhino: причина лежит в message, а output пуст. Без этой
-  // ветки наружу уходило «Rhino не вернул снимок:» с пустотой после двоеточия —
-  // сообщение, по которому нечего чинить.
-  if (box?.success === false) {
-    throw new Error(`Снимок Rhino не собрался: ${String(box.message ?? 'без объяснения')}`)
+  // Агент отдаёт уже разобранный файл. Пустота здесь означает, что снимок не
+  // дошёл, а не что модель пуста, — и сказать об этом надо словами.
+  if (!raw || typeof raw !== 'object' || !Array.isArray((raw as { nodes?: unknown }).nodes)) {
+    throw new Error('Снимок Rhino не дошёл: агент вернул не структуру документа')
   }
-
-  const printed = typeof box?.output === 'string' ? box.output : String(box?.result ?? '')
-
-  // Берём по меткам, а не «от первой скобки до конца»: плагин печатает ответ
-  // ДВАЖДЫ, и разбор всей строки падал на лишних символах после JSON.
-  const open = printed.indexOf(OPEN_MARK)
-  const close = printed.indexOf(CLOSE_MARK, open + 1)
-  if (open < 0 || close < 0) {
-    throw new Error(`Rhino не вернул снимок: ${printed.slice(0, 200) || 'пустой ответ'}`)
-  }
-
-  try {
-    return JSON.parse(printed.slice(open + OPEN_MARK.length, close)) as Record<string, unknown>
-  } catch {
-    throw new Error(`Снимок Rhino не разобрался, длина ответа ${printed.length} знаков`)
-  }
+  return raw as Record<string, unknown>
 }
 
 function namespace(snapshot: ModelSnapshot, engine: EngineId): ModelSnapshot {

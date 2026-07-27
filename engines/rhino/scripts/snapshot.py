@@ -35,15 +35,6 @@ import scriptcontext as sc
 
 rg = Rhino.Geometry
 
-# Потолок треугольников на снимок. Больше вьюпорт в браузере не тянет плавно, а
-# смысл снимка — смотреть и выделять, а не хранить модель.
-# Мал против SketchUp намеренно: ответ Rhino возвращается НАПЕЧАТАННОЙ строкой,
-# а не структурой, и весь меш едет текстом. Восемьдесят тысяч треугольников —
-# около трёх мегабайт JSON, что через печать проходит, а двести тысяч уже нет.
-# Координаты округляем до сотой миллиметра: точнее вьюпорту не нужно, а на
-# длине строки это экономит вдвое.
-TRIANGLE_LIMIT = 80000
-
 EMPTY_GUID = "00000000-0000-0000-0000-000000000000"
 
 # Округления мало: в IronPython 2 round() укорачивает ЗНАЧЕНИЕ, а печатает его
@@ -117,6 +108,34 @@ def _groups_of(obj):
     return names
 
 
+def _meshing():
+    """
+    Настройки сетки.
+
+    Ограничения на тяжесть модели тут нет и быть не должно: сколько в документе
+    геометрии, столько и уедет. Но плоскую грань Rhino по умолчанию режет на
+    мелкую решётку — на скруглённой коробке аккумулятора выходило 16 224
+    треугольника там, где хватает двух сотен. Это не упрощение и не потеря:
+    плоскость описывается двумя треугольниками ТОЧНО, SimplePlanes ровно это и
+    включает. Кривизну оставляем читаемой — восемнадцать сегментов на оборот.
+    """
+    parameters = getattr(rg.MeshingParameters, "Coarse", None)
+    if parameters is None:
+        parameters = rg.MeshingParameters.Default
+
+    try:
+        parameters.SimplePlanes = True
+        parameters.RefineAngle = 0.35
+        parameters.GridMinCount = 0
+        parameters.RefineGrid = False
+    except Exception:
+        # Набор полей менялся между версиями RhinoCommon. Не приняло — работаем
+        # на том, что есть: лучше плотная сетка, чем пустой снимок.
+        pass
+
+    return parameters
+
+
 def _mesh_of(geometry):
     """Треугольники объекта. Возвращает (позиции, нормали, число)."""
     meshes = []
@@ -129,7 +148,7 @@ def _mesh_of(geometry):
         # выделять, а не чтобы по нему работать: точная сетка на этой же сборке
         # дала 20 мегабайт текста, грубая — впятеро меньше при неотличимом на
         # глаз силуэте. Считать по снимку нечего, для этого есть rh_inspect.
-        parameters = getattr(rg.MeshingParameters, "Coarse", None) or rg.MeshingParameters.Default
+        parameters = _meshing()
         made = rg.Mesh.CreateFromBrep(brep, parameters)
         meshes = list(made) if made else []
     elif isinstance(geometry, rg.SubD):
@@ -258,25 +277,17 @@ def snapshot():
         if obj.IsSelected(False):
             selection.append(node_id)
 
-        if total < TRIANGLE_LIMIT:
-            positions, normals, count = _mesh_of(geometry)
-            if count:
-                total += count
-                # Потолок проверяется ДО объекта, поэтому последний способен
-                # его перешагнуть. Отмечаем это сразу: иначе снимок молча
-                # выходит вдвое больше обещанного.
-                if total >= TRIANGLE_LIMIT:
-                    truncated = True
-                node["triangles"] = count
-                parts.append({
-                    "nodeId": node_id,
-                    "layer": layer.FullPath if layer else "",
-                    "triangles": count,
-                    "positions": positions,
-                    "normals": normals,
-                })
-        else:
-            truncated = True
+        positions, normals, count = _mesh_of(geometry)
+        if count:
+            total += count
+            node["triangles"] = count
+            parts.append({
+                "nodeId": node_id,
+                "layer": layer.FullPath if layer else "",
+                "triangles": count,
+                "positions": positions,
+                "normals": normals,
+            })
 
         nodes.append(node)
 
@@ -317,15 +328,33 @@ def _kind_of(geometry):
     return "mesh"
 
 
-# ensure_ascii оставлен ПО УМОЛЧАНИЮ, то есть включён, и это не небрежность.
-# Ответ Rhino приходит напечатанной строкой через несколько слоёв перекодировки,
-# и кириллица в ней превращается в мусор — видно на именах слоёв. Экранирование
-# делает строку целиком из ASCII, которому эти слои уже не вредят.
+# Снимок уходит ФАЙЛОМ, а не печатью, и это единственное, что снимает потолок
+# на тяжесть модели. Печать — единственный канал, который даёт чужой плагин, и
+# канал плохой: на восьмидесяти тысячах треугольников выходило десять мегабайт
+# текста, да ещё в двух копиях (плагин печатает ответ дважды). На модели в сто
+# миллионов там были бы гигабайты.
 #
-# Метки вокруг документа — не украшение. Плагин отдаёт напечатанное ДВАЖДЫ:
-# на этой сборке 10,5 мегабайта превратились в 21, и разбор падал на «лишних
-# символах после JSON». Причина в чужом коде, чинить её нам нечем, а вот брать
-# первый экземпляр по меткам — надёжно и не зависит от того, починят ли её.
-print("<<<COMPLEX-SNAPSHOT")
-print(json.dumps(snapshot()))
-print("COMPLEX-SNAPSHOT>>>")
+# Файл лежит на машине пользователя, где и Rhino, — а агент работает там же и
+# читает его целиком. Через печать идёт одна строчка с путём, и её удвоение
+# больше ничему не вредит.
+#
+# ensure_ascii оставлен включённым по той же причине, что и раньше: кириллица
+# через слои перекодировки превращается в мусор, а экранирование делает файл
+# целиком из ASCII.
+import os
+import tempfile
+
+data = snapshot()
+path = os.path.join(tempfile.gettempdir(), "complex-rhino-snapshot.json")
+
+handle = open(path, "wb")
+try:
+    handle.write(json.dumps(data).encode("utf-8"))
+finally:
+    handle.close()
+
+print(json.dumps({
+    "snapshotFile": path,
+    "triangles": data["triangles"],
+    "objects": len(data["parts"]),
+}))

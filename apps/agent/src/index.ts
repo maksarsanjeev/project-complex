@@ -5,6 +5,7 @@ import type {
   EngineInstance,
   GatewayFrame,
 } from '@complex/protocol'
+import { readFile } from 'node:fs/promises'
 import { hostname } from 'node:os'
 import WebSocket from 'ws'
 import * as blender from './engines/blender.ts'
@@ -134,6 +135,48 @@ function digest(engines: EngineDescriptor[]): string {
 
 /* ────────────────────────── выполнение вызовов ────────────────────────── */
 
+/**
+ * Имя команды снимка. Не команда плагина, а наша: плагин про неё не знает.
+ */
+const SNAPSHOT_COMMAND = 'complex_snapshot'
+
+/**
+ * Снимок документа Rhino: скрипт пишет его файлом, агент читает файл.
+ *
+ * Обходной путь понадобился потому, что чужой плагин умеет отдавать только
+ * НАПЕЧАТАННОЕ. На восьмидесяти тысячах треугольников это уже десять мегабайт
+ * текста, да ещё в двух копиях — плагин печатает ответ дважды. Ограничивать
+ * из-за этого тяжесть модели неправильно: сколько в документе геометрии,
+ * столько и должно доехать.
+ *
+ * Файл лежит на этой же машине, где Rhino, и читаем мы его сами, минуя
+ * плагин. По проводу к gateway он уходит уже нашим соединением, которое к
+ * размеру равнодушно.
+ */
+async function rhinoSnapshot(params: Record<string, unknown>): Promise<unknown> {
+  const printed = (await rhino.call('execute_rhinoscript_python_code', params)) as {
+    success?: boolean
+    output?: string
+    message?: string
+  }
+
+  if (printed?.success === false) {
+    throw new Error(`снимок Rhino не собрался: ${printed.message ?? 'без объяснения'}`)
+  }
+
+  const text = String(printed?.output ?? '')
+  const start = text.indexOf('{')
+  if (start < 0) throw new Error(`Rhino не назвал файл снимка: ${text.slice(0, 200) || 'пусто'}`)
+
+  // Печать удвоена, поэтому берём первый объект, а не всю строку.
+  const end = text.indexOf('}', start)
+  const head = JSON.parse(text.slice(start, end + 1)) as { snapshotFile?: string }
+  if (!head.snapshotFile) throw new Error('Rhino не назвал файл снимка')
+
+  const body = await readFile(head.snapshotFile, 'utf8')
+  return JSON.parse(body)
+}
+
 async function execute(frame: Extract<GatewayFrame, { type: 'invoke' }>): Promise<unknown> {
   const engine = inventory.find((e) => e.id === frame.engine)
   const instances = engine?.instances ?? []
@@ -143,6 +186,12 @@ async function execute(frame: Extract<GatewayFrame, { type: 'invoke' }>): Promis
   // Вызов не прошёл — состояние движка устарело, перепроверим его на следующем
   // тике, не дожидаясь получаса.
   if (frame.engine === 'rhino') {
+    if (frame.command === SNAPSHOT_COMMAND) {
+      return rhinoSnapshot(frame.params).catch((e: unknown) => {
+        forgetSocket('rhino')
+        throw e
+      })
+    }
     return rhino.call(frame.command, frame.params).catch((e: unknown) => {
       forgetSocket('rhino')
       throw e
