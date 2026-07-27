@@ -284,6 +284,9 @@ async function* runOpenRouter(input: {
   ]
 
   let asked = false
+  // Расход хода — для того же предела, что и на пути Agent SDK. Считаем сами:
+  // отсюда цифры уходят наружу кусками, а сравнивать надо накопленное.
+  let spent = 0
 
   // Круг = один запрос к модели. Пока она просит инструменты — продолжаем.
   for (let round = 0; round < config.maxToolRounds; round++) {
@@ -294,6 +297,7 @@ async function* runOpenRouter(input: {
         result.text += piece.text
         yield { kind: 'text', text: piece.text }
       } else if (piece.kind === 'usage') {
+        spent += piece.usage.prompt + piece.usage.completion
         yield { kind: 'usage', usage: piece.usage }
       } else {
         result.calls = piece.calls
@@ -356,6 +360,20 @@ async function* runOpenRouter(input: {
     }
 
     if (asked) break
+
+    // Предел расхода — не обрыв, а вопрос: продолжать ли. Проверяем после
+    // круга целиком, а не после каждого вызова: обрывать посреди набора
+    // инструментов одного круга нельзя, модель ждёт ответа на каждый.
+    if (config.tokenBudget > 0 && spent > config.tokenBudget) {
+      yield {
+        kind: 'ask',
+        question:
+          `Потрачено ${(spent / 1_000_000).toFixed(2)} млн токенов — предел на один ход ` +
+          `${(config.tokenBudget / 1_000_000).toFixed(2)} млн. Работа не закончена. ` +
+          'Продолжать? Ответьте «продолжай» — вернусь туда, где остановился, с новым бюджетом.',
+      }
+      break
+    }
 
     // Круги кончились, а модель всё просит инструменты — говорим прямо.
     if (round === config.maxToolRounds - 1) {

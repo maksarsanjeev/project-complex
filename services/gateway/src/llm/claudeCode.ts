@@ -80,6 +80,13 @@ export async function* runClaudeCode(input: {
   systemPrompt: string
   selection?: SelectionRef[]
 }): AsyncGenerator<LlmPiece> {
+  // Расход копится по ходу, а не берётся из итогового сообщения: итог придёт
+  // слишком поздно, чтобы на него реагировать. Считаем по сообщениям модели —
+  // в каждом лежит расход его собственного обращения к API.
+  const spent = { prompt: 0, completion: 0, cached: 0 }
+  let stoppedByBudget = false
+  let lastTool = ''
+
   const queue = new PieceQueue()
   const defs = availableTools()
   const wire = toWireTools(defs)
@@ -111,6 +118,7 @@ export async function* runClaudeCode(input: {
           }
         }
 
+        lastTool = item.function.name
         queue.push({ kind: 'tool-start', id, name: item.function.name, args })
         const outcome = await runTool(item.function.name, args)
         queue.push({ kind: 'tool-done', id, name: item.function.name, outcome })
@@ -165,7 +173,7 @@ export async function* runClaudeCode(input: {
         name.startsWith(`mcp__${SERVER}__`)
           ? { behavior: 'allow' as const, updatedInput: {} }
           : { behavior: 'deny' as const, message: 'Вне движков инструментов нет.' },
-      maxTurns: config.maxToolRounds,
+      maxTurns: config.cliMaxTurns,
       // Настройки с диска не читаем: в контейнере лежит наш собственный
       // CLAUDE.md, и он написан для агента-программиста, а не для моделлера.
       settingSources: [],
@@ -180,6 +188,36 @@ export async function* runClaudeCode(input: {
   void (async () => {
     try {
       for await (const message of run) {
+        if (message.type === 'assistant') {
+          const used = message.message?.usage as
+            | {
+                input_tokens?: number
+                output_tokens?: number
+                cache_read_input_tokens?: number
+                cache_creation_input_tokens?: number
+              }
+            | undefined
+          if (used) {
+            const cached = used.cache_read_input_tokens ?? 0
+            spent.cached += cached
+            spent.prompt +=
+              (used.input_tokens ?? 0) + cached + (used.cache_creation_input_tokens ?? 0)
+            spent.completion += used.output_tokens ?? 0
+          }
+
+          const total = spent.prompt + spent.completion
+          if (config.tokenBudget > 0 && total > config.tokenBudget && !stoppedByBudget) {
+            stoppedByBudget = true
+            // Прерываем ДО вопроса: иначе модель успеет сделать ещё круг,
+            // пока человек читает, и спросим мы уже задним числом.
+            await run.interrupt().catch(() => {})
+            queue.push({ kind: 'ask', question: budgetQuestion(total, lastTool) })
+            queue.push({ kind: 'usage', usage: { ...spent } })
+            break
+          }
+          continue
+        }
+
         if (message.type === 'system' && message.subtype === 'init') {
           sdkSessions.set(input.sessionId, message.session_id)
           // Какую модель SDK взял на самом деле. Просили одну, а имя могло не
@@ -248,6 +286,28 @@ export async function* runClaudeCode(input: {
   })()
 
   yield* queue.drain()
+}
+
+/**
+ * Вопрос про исчерпанный бюджет — человеческими словами и с числами.
+ *
+ * Почему вопрос, а не молчаливый обрыв. Раньше ход упирался в потолок кругов и
+ * заканчивался чужой английской строкой в хвосте длинного ответа — заметить её
+ * было почти нельзя, и выглядело это так, будто модель бросила работу сама.
+ * На деле она чинила найденный ею же брак. Решать, доплачивать ли за починку,
+ * должен человек, и для этого ему нужны две вещи: сколько уже потрачено и на
+ * чём остановились.
+ */
+function budgetQuestion(total: number, lastTool: string): string {
+  const millions = (total / 1_000_000).toFixed(2)
+  const limit = (config.tokenBudget / 1_000_000).toFixed(2)
+
+  return (
+    `Потрачено ${millions} млн токенов — предел на один ход ${limit} млн. ` +
+    (lastTool ? `Работа не закончена, последним шагом был ${lastTool}. ` : 'Работа не закончена. ') +
+    'Продолжать? Ответьте «продолжай» — я вернусь ровно туда, где остановился, ' +
+    'с новым бюджетом. Ответьте «хватит» — оставлю как есть и расскажу, что успел.'
+  )
 }
 
 /** Читающие инструменты узнаём по имени — так же, как их называет реестр. */
