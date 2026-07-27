@@ -9,6 +9,7 @@ import { readFile } from 'node:fs/promises'
 import { hostname } from 'node:os'
 import WebSocket from 'ws'
 import * as blender from './engines/blender.ts'
+import * as mcneel from './engines/mcneel.ts'
 import * as rhino from './engines/rhino.ts'
 import * as sketchup from './engines/sketchup.ts'
 
@@ -186,6 +187,12 @@ async function execute(frame: Extract<GatewayFrame, { type: 'invoke' }>): Promis
   // Вызов не прошёл — состояние движка устарело, перепроверим его на следующем
   // тике, не дожидаясь получаса.
   if (frame.engine === 'rhino') {
+    // Мостов к Rhino два, и выбирает не настройка, а сама команда: у McNeel
+    // имена помечены приставкой. Так оба доступны одновременно и сравнивать их
+    // можно в одном сеансе, не переключая сервер.
+    if (frame.command.startsWith(mcneel.PREFIX)) {
+      return mcneel.call(frame.command.slice(mcneel.PREFIX.length), frame.params)
+    }
     if (frame.command === SNAPSHOT_COMMAND) {
       return rhinoSnapshot(frame.params).catch((e: unknown) => {
         forgetSocket('rhino')

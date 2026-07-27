@@ -1,6 +1,7 @@
 import type { EngineDescriptor } from '@complex/protocol'
 import { invoke, onlineEngines } from '../agents.ts'
 import { BLENDER_TOOLS } from './blender.ts'
+import { MCNEEL_TOOLS } from './mcneel.ts'
 import { RHINO_TOOLS } from './rhino.ts'
 import { ASK_TOOL } from './ask.ts'
 import { SKETCHUP_TOOLS } from './sketchup.ts'
@@ -17,7 +18,7 @@ import type { ToolDef } from './types.ts'
  * SketchUp, тогда построю».
  */
 
-const ALL: ToolDef[] = [...SKETCHUP_TOOLS, ...RHINO_TOOLS, ...BLENDER_TOOLS]
+const ALL: ToolDef[] = [...SKETCHUP_TOOLS, ...RHINO_TOOLS, ...MCNEEL_TOOLS, ...BLENDER_TOOLS]
 
 /** Имя инструмента-вопроса: цикл разговора обрабатывает его сам, без движка. */
 export const ASK_TOOL_NAME = ASK_TOOL.name
