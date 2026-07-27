@@ -12,6 +12,15 @@ interface ChatState {
    */
   pendingOptions: string[]
   /**
+   * Чекпойнт итерации: модель показала проход и ждёт решения.
+   *
+   * Отдельно от pendingOptions, потому что показывается иначе — большой
+   * карточкой поверх вьюпорта, а не строчкой кнопок под полем ввода. Мелкий
+   * блок под вводом легко пропустить, а тут вопрос в том, тратить ли ещё
+   * миллион токенов.
+   */
+  checkpoint: { question: string; options: string[] } | null
+  /**
    * Расход по текущей сессии. Складывается по ходам: стоимость проекта видно
    * сразу, а не в конце месяца по счёту.
    */
@@ -28,6 +37,7 @@ interface ChatState {
   send: () => Promise<void>
   stop: () => void
   setPendingOptions: (options: string[]) => void
+  setCheckpoint: (checkpoint: { question: string; options: string[] } | null) => void
   addUsage: (u: { prompt: number; completion: number; cached: number; cost?: number }) => void
   resetUsage: () => void
 }
@@ -36,6 +46,7 @@ let cancelled = false
 
 export const useChat = create<ChatState>()((set, get) => ({
   pendingOptions: [],
+  checkpoint: null,
   spent: { prompt: 0, completion: 0, cached: 0, cost: 0 },
   draft: '',
   mode: 'api',
@@ -58,7 +69,7 @@ export const useChat = create<ChatState>()((set, get) => ({
       createdAt: new Date().toISOString(),
     }
     useSession.getState().pushMessage(user)
-    set({ draft: '', sending: true, pendingOptions: [] })
+    set({ draft: '', sending: true, pendingOptions: [], checkpoint: null })
 
     cancelled = false
     try {
@@ -93,6 +104,7 @@ export const useChat = create<ChatState>()((set, get) => ({
   },
 
   setPendingOptions: (pendingOptions) => set({ pendingOptions }),
+  setCheckpoint: (checkpoint) => set({ checkpoint }),
 
   addUsage: (u) =>
     set((s) => ({

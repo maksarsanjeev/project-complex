@@ -18,6 +18,7 @@ interface SessionState {
   init: () => Promise<void>
   select: (id: string) => Promise<void>
   setQuery: (q: string) => void
+  reloadSnapshots: () => Promise<void>
   refresh: () => Promise<void>
   loadTrash: () => Promise<void>
 
@@ -70,6 +71,20 @@ export const useSession = create<SessionState>()((set, get) => ({
     })
     // У каждой сессии своя модель. Нет своей — вьюпорт остаётся пустым, а не
     // показывает соседнюю.
+    useModel.getState().adopt(state.snapshots ?? [])
+  },
+
+  /**
+   * Перечитать снимки открытой сессии.
+   *
+   * Нужен на чекпойнте: модель уже положила снимок в базу, и повторно дёргать
+   * движок незачем — снимок Rhino это мегабайты и секунды.
+   */
+  async reloadSnapshots() {
+    const id = get().activeId
+    if (!id) return
+    const state = await transport.openSession(id)
+    if (get().activeId !== id) return
     useModel.getState().adopt(state.snapshots ?? [])
   },
 
@@ -176,9 +191,20 @@ export const useSession = create<SessionState>()((set, get) => ({
         break
 
       case 'ask':
-        // Вопрос уже пришёл текстом в самом ответе — здесь остаются только
-        // варианты, чтобы показать их кнопками под полем ввода.
-        useChat.getState().setPendingOptions(event.options ?? [])
+        // Вопрос с вариантами — это чекпойнт итерации: модель собрала проход и
+        // ждёт решения. Показывается карточкой поверх вьюпорта, потому что
+        // решается тут не мелочь, а тратить ли ещё миллион токенов.
+        //
+        // Вопрос без вариантов — обычное уточнение по ходу дела, ему хватает
+        // строчки кнопок под полем ввода.
+        if (event.options?.length) {
+          useChat.getState().setCheckpoint({ question: event.question, options: event.options })
+          // Снимок сервер уже положил в сессию — забираем его СО СВОЕЙ стороны,
+          // не тревожа движок повторно: там мегабайты.
+          void get().reloadSnapshots()
+        } else {
+          useChat.getState().setPendingOptions(event.options ?? [])
+        }
         break
 
       case 'scene-patch':

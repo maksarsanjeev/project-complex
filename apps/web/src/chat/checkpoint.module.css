@@ -1,0 +1,105 @@
+/* Карточка чекпойнта. Треть экрана — намеренно: остановку, которую легко
+   пропустить, пропустят. */
+.veil {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Вьюпорт под карточкой должен просвечивать: человек решает, глядя на
+     модель, а не на текст о ней. */
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  z-index: 40;
+}
+
+.card {
+  width: min(680px, 88%);
+  min-height: 33vh;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px;
+  background: var(--bg);
+  border: var(--hair) solid var(--ink-1);
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: var(--hair) solid var(--line);
+  padding-bottom: 10px;
+}
+
+.hint {
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  color: var(--ink-3);
+}
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  color: var(--ink-1);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.button {
+  height: 30px;
+  padding: 0 14px;
+  border: var(--hair) solid var(--line-2);
+  background: transparent;
+  color: var(--ink-1);
+  font: inherit;
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+  border-color: var(--ink-1);
+}
+
+.button:disabled {
+  color: var(--ink-3);
+  cursor: default;
+}
+
+.button--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.own {
+  display: flex;
+  gap: 8px;
+  border-top: var(--hair) solid var(--line);
+  padding-top: 12px;
+}
+
+.input {
+  flex: 1;
+  height: 30px;
+  padding: 0 10px;
+  border: var(--hair) solid var(--line-2);
+  background: transparent;
+  color: var(--ink-1);
+  font: inherit;
+  font-size: var(--fs-body);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--ink-1);
+}

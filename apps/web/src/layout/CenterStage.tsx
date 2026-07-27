@@ -1,6 +1,7 @@
 import { t } from '../i18n'
 import { NodeGraph } from '../nodes/NodeGraph'
 import { useLayout, type CenterTab } from '../store/layout'
+import { Checkpoint } from '../chat/Checkpoint'
 import { Viewport, ViewportToolbar } from '../viewport/Viewport'
 import s from './layout.module.css'
 
@@ -37,6 +38,9 @@ export function CenterStage() {
       </div>
 
       <div className={s.centerBody}>
+        {/* Карточка чекпойнта живёт здесь, а не в чате: решение принимают,
+            глядя на модель, и перекрывать надо именно вьюпорт. */}
+        <Checkpoint />
         <div className={s.stage} data-hidden={tab !== 'viewport' || undefined} inert={tab !== 'viewport'}>
           <Viewport />
         </div>

@@ -60,6 +60,15 @@ export const useModel = create<ModelState>()((set) => ({
       // положит, чтобы при возврате к проекту модель была на месте.
       const sessionId = useSession.getState().activeId ?? undefined
       const fresh = await transport.pullModel({ engine, sessionId })
+
+      // Пока снимок ехал, человек мог создать новый проект. Снимок принадлежит
+      // ТОЙ сессии, из которой его просили, и в новую попасть не должен —
+      // иначе в пустом проекте висит модель предыдущего. Снимок Rhino едет
+      // мегабайтами и секундами, так что окно для этой гонки широкое.
+      if (useSession.getState().activeId !== sessionId) {
+        set({ loading: false })
+        return
+      }
       // Движок не запущен — это не ошибка, а обычное состояние: просто у этой
       // ветки дерева нечего показать, остальные остаются на месте.
       set((state) => {
