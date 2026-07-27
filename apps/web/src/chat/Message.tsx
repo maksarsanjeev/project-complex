@@ -1,6 +1,7 @@
 import type { ChatMessage, ToolCall } from '@complex/protocol'
 import { useState } from 'react'
 import { t } from '../i18n'
+import { useEngines } from '../store/engine'
 import { Label, StatusMark, cx, type MarkState } from '../ui'
 import s from './chat.module.css'
 
@@ -56,13 +57,29 @@ const time = (iso: string): string =>
   new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
 
 export function Message({ message }: { message: ChatMessage }) {
+  const providers = useEngines((e) => e.providers)
+
+  // В сообщении хранится настоящее имя модели — то, что ушло провайдеру
+  // («anthropic/claude-sonnet-5»). Показывать его человеку незачем: в шапке
+  // чата он выбирал «Claude Sonnet 5», и подпись должна совпадать с выбором.
+  // Настоящее имя остаётся во всплывающей подсказке — по нему разбираются,
+  // когда ответ выглядит не тем, что просили.
+  const author =
+    message.role === 'assistant' && message.model
+      ? (providers.find((p) => p.model === message.model)?.label ??
+        // Провайдера могли убрать из списка, а переписка осталась. Тогда хотя
+        // бы срезаем префикс поставщика — он ничего не добавляет.
+        (message.model.split('/').pop() ?? message.model))
+      : t(ROLE_LABEL[message.role])
+
   return (
     <article className={s.msg}>
       <div className={s.gutter}>
-        <span className={cx(s.roleChip, message.role === 'user' && s['roleChip--user'])}>
-          {message.role === 'assistant' && message.model
-            ? message.model
-            : t(ROLE_LABEL[message.role])}
+        <span
+          className={cx(s.roleChip, message.role === 'user' && s['roleChip--user'])}
+          title={message.role === 'assistant' && message.model ? message.model : undefined}
+        >
+          {author}
         </span>
         <span className={s.time}>{time(message.createdAt)}</span>
       </div>
