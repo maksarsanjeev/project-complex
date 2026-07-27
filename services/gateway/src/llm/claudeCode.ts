@@ -275,7 +275,10 @@ export async function* runClaudeCode(input: {
             // Прерываем ДО вопроса: иначе модель успеет сделать ещё круг,
             // пока человек читает, и спросим мы уже задним числом.
             await run.interrupt().catch(() => {})
-            queue.push({ kind: 'ask', question: budgetQuestion(total, lastTool) })
+            // Варианты обязательны: карточку рисует именно их наличие, а без
+            // неё вопрос уходит мелкой строчкой под полем ввода — там его и
+            // не заметили.
+            queue.push({ kind: 'ask', question: budgetQuestion(total, lastTool), options: CHOICES })
             queue.push({ kind: 'usage', usage: { ...spent } })
             break
           }
