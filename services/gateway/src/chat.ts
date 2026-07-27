@@ -161,8 +161,9 @@ export async function* streamAnswer(input: {
     return
   }
 
-  // Строки, которые меняются от хода к ходу: что запущено и что выделено.
-  const contextText = [engineSummary(), describeSelection(input.selection)]
+  // Строки, которые меняются от хода к ходу: кем вызвали, что запущено и что
+  // выделено.
+  const contextText = [describeModel(input.provider, model), engineSummary(), describeSelection(input.selection)]
     .filter(Boolean)
     .join('\n\n')
 
@@ -364,6 +365,30 @@ async function* runOpenRouter(input: {
       }
     }
   }
+}
+
+/**
+ * Кем модель вызвали — её собственными словами.
+ *
+ * Зачем это вообще нужно. Модель не знает, под каким именем её позвали: в
+ * запросе имя есть, но самой модели оно не сообщается. На вопрос «ты Sonnet
+ * или Opus?» она честно отвечает «не знаю» — и это правильный ответ с её
+ * стороны, но бесполезный с нашей: у нас в шапке чата стоит переключатель, и
+ * человек имеет право проверить, что переключатель работает.
+ *
+ * Знает это gateway — он и подсказывает. Даём и человеческое название, и
+ * настоящее имя: первое совпадает с подписью в чате, второе — с тем, что уходит
+ * провайдеру и пишется в лог.
+ */
+function describeModel(provider: ModelProvider | undefined, model: string): string {
+  const label = provider?.label ?? model
+  const where = provider?.transport === 'cli' ? 'через Claude Agent SDK' : 'через OpenRouter'
+
+  return (
+    `Тебя вызвали как «${label}» (${model}) ${where}. ` +
+    'Если спросят, какая ты модель, — назови это, не отговаривайся незнанием. ' +
+    'Про всё остальное про себя догадками не отвечай.'
+  )
 }
 
 /**
