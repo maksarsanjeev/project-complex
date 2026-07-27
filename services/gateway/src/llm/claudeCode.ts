@@ -1,6 +1,7 @@
 import { createSdkMcpServer, query, tool } from '@anthropic-ai/claude-agent-sdk'
 import type { SelectionRef } from '@complex/protocol'
 import { config } from '../config.ts'
+import { nowIso } from '../db/db.ts'
 import {
   ASK_TOOL_NAME,
   availableTools,
@@ -181,6 +182,14 @@ export async function* runClaudeCode(input: {
       for await (const message of run) {
         if (message.type === 'system' && message.subtype === 'init') {
           sdkSessions.set(input.sessionId, message.session_id)
+          // Какую модель SDK взял на самом деле. Просили одну, а имя могло не
+          // совпасть с его каталогом — тогда он молча возьмёт умолчание, и
+          // узнать об этом иначе будет неоткуда: в ответе модель себя не
+          // называет, а угадывать по слогу — не проверка.
+          console.log(
+            `[SDK ${nowIso()}] просили ${input.model}, работает ${message.model}` +
+              (resume ? ', продолжена сессия' : ''),
+          )
           continue
         }
 
