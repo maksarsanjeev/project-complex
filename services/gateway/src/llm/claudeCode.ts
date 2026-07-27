@@ -154,10 +154,17 @@ export async function* runClaudeCode(input: {
         // строящих инструментов: у McNeel `get_context` для того и заведён.
         if (!checkpoint && BUILDING.has(item.function.name)) {
           const now = await objectCount()
-          if (objectsBefore < 0) objectsBefore = now
-          // Стоп — на ПРИРОСТЕ, а не на наличии: важно, что модель что-то
-          // сделала, а не что в сцене вообще что-то есть.
-          else if (now > objectsBefore) checkpoint = true
+          if (objectsBefore < 0 || now < objectsBefore) {
+            // Отсчёт ведём от НИЖНЕЙ точки, а не от начала хода. Первым делом
+            // модель обычно чистит сцену: если оставить старую отметку, прирост
+            // с нуля до тридцати деталей окажется «меньше, чем было», и
+            // страховка промолчит — ровно так и вышло на живом ходе.
+            objectsBefore = now
+          } else if (now > objectsBefore) {
+            // Стоп — на приросте, а не на наличии: важно, что модель что-то
+            // сделала, а не что в сцене вообще что-то есть.
+            checkpoint = true
+          }
         }
 
         // Картинка идёт блоком ответа, а не отдельным сообщением: MCP это
