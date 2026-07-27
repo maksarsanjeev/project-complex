@@ -98,6 +98,26 @@ export const RHINO_TOOLS: ToolDef[] = [
     },
   },
   {
+    name: 'rh_create_objects',
+    engine: 'rhino',
+    command: 'create_objects',
+    description:
+      'Создаёт СРАЗУ НЕСКОЛЬКО объектов одним вызовом. Предпочитай его одиночному: пять полок ' +
+      'одним вызовом вместо пяти — это пять кругов разговора экономии и меньше поводов ошибиться ' +
+      'на полпути. Каждый элемент описывается так же, как в rh_create_object.',
+    parameters: {
+      type: 'object',
+      properties: {
+        objects: {
+          type: 'array',
+          description: 'Список объектов: у каждого type, name, params и при нужде translation',
+          items: { type: 'object' },
+        },
+      },
+      required: ['objects'],
+    },
+  },
+  {
     name: 'rh_delete_object',
     engine: 'rhino',
     command: 'delete_object',
@@ -193,28 +213,49 @@ export const RHINO_TOOLS: ToolDef[] = [
     },
   },
   {
-    name: 'rh_zoom_extents',
+    name: 'rh_inspect',
     engine: 'rhino',
     command: 'execute_rhinoscript_python_code',
     description:
-      'Вписать всю модель в кадр. Вызывай ПЕРЕД снимком: вид Rhino остаётся там, где его оставил ' +
-      'человек, и построенное запросто окажется за краем кадра — снимок покажет пустоту, ' +
-      'хотя геометрия на месте.',
-    parameters: { type: 'object', properties: {} },
-    mapParams: () => ({
-      code: ['import rhinoscriptsyntax as rs', 'rs.ZoomExtents(all=True)', 'print("вид вписан")'].join(
-        '\n',
-      ),
+      'Разбор сборки ОДНИМ ответом: по каждой детали габарит, положение, замкнутость и объём, ' +
+      'общий габарит, и главное — СТЫКИ: какие детали действительно соприкасаются, а какие лишь ' +
+      'перекрываются габаритами, но висят в воздухе. Это самая частая и самая незаметная ошибка ' +
+      'сборки. Вызывай вместо нескольких замеров подряд.',
+    parameters: {
+      type: 'object',
+      properties: {
+        layer: { type: 'string', description: 'Только этот слой' },
+        ids: { type: 'array', description: 'Только эти объекты', items: { type: 'string' } },
+        contacts: { type: 'boolean', description: 'Считать стыки; по умолчанию да' },
+      },
+    },
+    mapParams: (args) => ({
+      code: fill(rhinoScript('inspect.py'), {
+        IDS: args.ids,
+        LAYER: args.layer,
+        CONTACTS: args.contacts !== false,
+      }),
     }),
   },
   {
-    name: 'rh_capture_viewport',
+    name: 'rh_look',
     engine: 'rhino',
     command: 'capture_viewport',
+    // Камера наводится сама, до снимка. Вид Rhino остаётся там, где его оставил
+    // человек, и построенное запросто оказывается за краем кадра — модель уже
+    // посмотрела на пустоту и честно доложила, что сцена пуста. Отдельным
+    // инструментом наведение стоило бы лишнего круга на каждый взгляд, а на
+    // шуруповёрте четыре взгляда съели восемь кругов из двадцати.
+    preCommand: {
+      command: 'execute_rhinoscript_python_code',
+      params: {
+        code: ['import rhinoscriptsyntax as rs', 'rs.ZoomExtents(all=True)'].join('\n'),
+      },
+    },
     description:
-      'Посмотреть на модель: снимок вида Rhino. Картинка возвращается тебе, и ты её ВИДИШЬ. ' +
-      'Пользуйся после построения, чтобы проверить результат глазами: габарит может сойтись, ' +
-      'а детали оказаться развёрнутыми или стоять не на месте.',
+      'Посмотреть на модель: камера наводится на всю геометрию и снимается кадр. ' +
+      'Картинка возвращается тебе, и ты её ВИДИШЬ. ' +
+      'Проверяй глазами после каждой заметной правки — габарит сходится и у вывернутой детали.',
     parameters: {
       type: 'object',
       properties: {

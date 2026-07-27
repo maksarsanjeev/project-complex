@@ -272,6 +272,17 @@ export async function runTool(name: string, args: Record<string, unknown>): Prom
   const code = `${command}\n${JSON.stringify(params, null, 2)}`
 
   try {
+    // Предварительная команда: её результат модели не показываем — он служебный.
+    // Ошибку тоже глотаем: не навелась камера — снимок всё равно лучше отказа.
+    if (tool.preCommand) {
+      await invoke({
+        engine: tool.engine,
+        instance,
+        command: tool.preCommand.command,
+        params: tool.preCommand.params ?? {},
+      }).catch(() => undefined)
+    }
+
     const result = await invoke({ engine: tool.engine, instance, command, params })
 
     // Картинку вынимаем ДО того, как ответ станет текстом.
