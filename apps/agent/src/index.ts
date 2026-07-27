@@ -53,6 +53,19 @@ const log = (msg: string): void => console.log(`[агент ${new Date().toISOSt
 /** Как часто заглядываем, что запущено. */
 const POLL_MS = 5_000
 
+/**
+ * Насколько редко опрашивать движки, отвечающие по сокету.
+ *
+ * SketchUp опрашивать дёшево: там чтение файлов-визиток, которые плагин и так
+ * пишет каждые две секунды. А у Rhino и Blender каждый опрос — это TCP-соединение
+ * и запрос к документу на главном потоке приложения.
+ *
+ * Замерено на живом Rhino: при опросе раз в пять секунд сервер плагина
+ * продержался несколько минут и перестал слушать вовсе. Раз в полминуты
+ * достаточно, чтобы заметить запуск, и несравнимо мягче к чужому плагину.
+ */
+const SOCKET_POLL_MS = 30_000
+
 const ENGINE_META: Record<EngineId, { label: string; port: number; exports: EngineDescriptor['exports'] }> = {
   sketchup: { label: 'SketchUp', port: 8080, exports: ['skp', 'obj', 'fbx', 'dae', 'stl'] },
   rhino: {
@@ -69,13 +82,33 @@ const ENGINE_META: Record<EngineId, { label: string; port: number; exports: Engi
 
 let inventory: EngineDescriptor[] = []
 
+/** Когда сокетные движки опрашивались в прошлый раз и что тогда нашлось. */
+const socketCache = new Map<EngineId, { at: number; instances: EngineInstance[] }>()
+
+async function probeSocket(
+  id: EngineId,
+  discover: () => Promise<EngineInstance[]>,
+): Promise<EngineInstance[]> {
+  const known = socketCache.get(id)
+  if (known && Date.now() - known.at < SOCKET_POLL_MS) return known.instances
+
+  const instances = await discover().catch(() => [])
+  socketCache.set(id, { at: Date.now(), instances })
+  return instances
+}
+
+/** Забыть кэш движка — после неудачного вызова состояние надо перепроверить. */
+function forgetSocket(id: EngineId): void {
+  socketCache.delete(id)
+}
+
 async function poll(): Promise<EngineDescriptor[]> {
   // Опрашиваем разом: Rhino и Blender отвечают через сокет, и ждать их
   // по очереди значило бы складывать таймауты.
   const [su, rh, bl] = await Promise.all([
     sketchup.discover().catch(() => []),
-    rhino.discover().catch(() => []),
-    blender.discover().catch(() => []),
+    probeSocket('rhino', rhino.discover),
+    probeSocket('blender', blender.discover),
   ])
 
   const build = (id: EngineId, instances: EngineInstance[]): EngineDescriptor => ({
@@ -107,8 +140,20 @@ async function execute(frame: Extract<GatewayFrame, { type: 'invoke' }>): Promis
 
   if (!instances.length) throw new Error(`${frame.engine} не запущен на машине ${machine}`)
 
-  if (frame.engine === 'rhino') return rhino.call(frame.command, frame.params)
-  if (frame.engine === 'blender') return blender.call(frame.command, frame.params)
+  // Вызов не прошёл — состояние движка устарело, перепроверим его на следующем
+  // тике, не дожидаясь получаса.
+  if (frame.engine === 'rhino') {
+    return rhino.call(frame.command, frame.params).catch((e: unknown) => {
+      forgetSocket('rhino')
+      throw e
+    })
+  }
+  if (frame.engine === 'blender') {
+    return blender.call(frame.command, frame.params).catch((e: unknown) => {
+      forgetSocket('blender')
+      throw e
+    })
+  }
 
   // SketchUp: окон бывает несколько, и тогда выбор обязателен. Молча взять
   // первое — значит однажды построить стену в чужом проекте.
