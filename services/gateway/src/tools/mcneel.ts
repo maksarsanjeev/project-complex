@@ -56,6 +56,20 @@ export const MCNEEL_TOOLS: ToolDef[] = [
     parameters: { type: 'object', properties: {} },
   },
   {
+    name: 'mc_save_doc',
+    engine: 'rhino',
+    command: 'mc:save_doc',
+    description:
+      'Сохранить документ в .3dm по указанному пути. Без диалогов, перезаписывает существующий. ' +
+      'Этим сохраняют ЧУЖУЮ работу перед очисткой сцены: то, что лежало в Rhino до тебя, ' +
+      'принадлежит человеку, и стирать его без сохранения нельзя.',
+    parameters: {
+      type: 'object',
+      properties: { path: { type: 'string', description: 'Полный путь к файлу .3dm' } },
+      required: ['path'],
+    },
+  },
+  {
     name: 'mc_list_objects',
     engine: 'rhino',
     command: 'mc:list_objects',

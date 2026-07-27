@@ -21,8 +21,35 @@ import { newId, nowIso } from './db/db.ts'
 
 const log = (msg: string): void => console.log(`[агенты ${nowIso()}] ${msg}`)
 
-/** Сколько ждём ответа на вызов, прежде чем считать его провалившимся. */
-const INVOKE_TIMEOUT_MS = 120_000
+/**
+ * Сколько ждём ответа на вызов.
+ *
+ * Две минуты были абсурдом: человек ждал больше десяти минут, чтобы узнать, что
+ * моста нет вовсе — четыре читающих вызова подряд по две минуты каждый. Столько
+ * не считается ни один запрос состояния; столько считается только тяжёлая
+ * геометрия, и для неё есть отдельный, длинный.
+ */
+const INVOKE_TIMEOUT_MS = 25_000
+
+/**
+ * Долгий таймаут — для вызовов, которые действительно считаются: построение,
+ * снимок модели, скрипты. Отличаем по имени команды, а не по флагу у каждого
+ * места вызова: забыть флаг легче, чем ошибиться в списке.
+ */
+const SLOW_TIMEOUT_MS = 300_000
+const SLOW = /run_python|run_csharp|execute|snapshot|boolean|fillet|chamfer|geometry|render/i
+
+/**
+ * Как часто спрашиваем агента, жив ли он.
+ *
+ * Понадобилось потому, что сокет умирает молча: gateway продолжал числить
+ * агента подключённым, инвентарь показывал движки онлайн, инструменты
+ * публиковались — а каждый вызов уходил в никуда и висел до таймаута. Дважды за
+ * день это стоило человеку получаса ожидания пустоты.
+ */
+const HEARTBEAT_MS = 20_000
+/** Столько молчания подряд — и соединение считается мёртвым. */
+const HEARTBEAT_MISSES = 2
 
 interface PendingInvoke {
   resolve: (value: unknown) => void
@@ -146,6 +173,36 @@ export function handleAgentSocket(socket: WebSocket): void {
 
   socket.on('close', disconnect)
   socket.on('error', disconnect)
+
+  /*
+    Пульс. Сокет умирает молча — особенно когда машина уходит в сон или сеть
+    моргает: TCP этого не замечает, а gateway продолжает числить агента живым и
+    отправлять ему вызовы, которые никто не примет.
+
+    Проверяем встроенным ping веб-сокета: он не требует ничего от агента, ответ
+    даёт сама библиотека. Два молчания подряд — рвём соединение сами, и тогда
+    движки честно становятся offline, а инструменты перестают публиковаться.
+    Лучше сказать «SketchUp не запущен», чем молча ждать две минуты на каждом
+    вызове.
+  */
+  let missed = 0
+  const pulse = setInterval(() => {
+    if (socket.readyState !== socket.OPEN) return
+    if (missed >= HEARTBEAT_MISSES) {
+      log(`${agent?.machine ?? 'агент'}: молчит ${missed} проверки подряд — отключаю`)
+      clearInterval(pulse)
+      socket.terminate()
+      disconnect()
+      return
+    }
+    missed += 1
+    socket.ping()
+  }, HEARTBEAT_MS)
+
+  socket.on('pong', () => {
+    missed = 0
+  })
+  socket.on('close', () => clearInterval(pulse))
 }
 
 /* ────────────────────────── что сейчас доступно ────────────────────────── */
@@ -194,10 +251,11 @@ export function invoke(input: {
 
   const id = newId('inv')
   return new Promise<unknown>((resolve, reject) => {
+    const wait = SLOW.test(input.command) ? SLOW_TIMEOUT_MS : INVOKE_TIMEOUT_MS
     const timer = setTimeout(() => {
       agent.pending.delete(id)
-      reject(new Error(`движок ${input.engine} не ответил за ${INVOKE_TIMEOUT_MS / 1000} с`))
-    }, INVOKE_TIMEOUT_MS)
+      reject(new Error(`движок ${input.engine} не ответил за ${wait / 1000} с`))
+    }, wait)
 
     agent.pending.set(id, { resolve, reject, timer })
     send(agent.socket, {

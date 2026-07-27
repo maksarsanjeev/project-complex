@@ -292,6 +292,15 @@ export function openSession(userId: string, sessionId: string): SessionState | n
   }
 }
 
+/**
+ * К какому движку привязана сессия. Нужен до всякой работы: прежде чем звать
+ * модель, надо убедиться, что мост её движка вообще отвечает.
+ */
+export function sessionEngine(sessionId: string): EngineId | null {
+  const row = db.prepare('SELECT engine FROM sessions WHERE id = ?').get(sessionId) as Row | undefined
+  return row ? ((str(row.engine) || null) as EngineId | null) : null
+}
+
 /* ────────────────────────── снимок модели ────────────────────────── */
 
 /**

@@ -15,6 +15,11 @@ import s from './checkpoint.module.css'
  *
  * Третий вариант — «скажу своими словами» — не кнопка, а поле: чаще всего
  * человек хочет не «продолжай», а «переделай вот эту деталь».
+ *
+ * Заголовок намеренно нейтральный. Сначала здесь стояло «итерация завершена»,
+ * и карточка соврала на первом же живом случае: модель не построила ничего, а
+ * спрашивала про упавший мост. Под этой карточкой бывает любая остановка,
+ * требующая человека, — текст внутри и объясняет, какая именно.
  */
 export function Checkpoint() {
   const checkpoint = useChat((c) => c.checkpoint)
@@ -40,8 +45,8 @@ export function Checkpoint() {
     <div className={s.veil}>
       <section className={s.card}>
         <header className={s.head}>
-          <Label>Итерация завершена</Label>
-          <span className={s.hint}>модель загружена во вьюпорт</span>
+          <Label>Требуется решение</Label>
+          <span className={s.hint}>работа приостановлена</span>
         </header>
 
         <div className={s.body}>{checkpoint.question}</div>

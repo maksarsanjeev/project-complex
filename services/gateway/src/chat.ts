@@ -7,7 +7,9 @@ import type {
 } from '@complex/protocol'
 import { config } from './config.ts'
 import { newId, nowIso } from './db/db.ts'
+import * as agents from './agents.ts'
 import { appendMessage, listMessages } from './db/repo.ts'
+import * as repo from './db/repo.ts'
 import {
   ASK_TOOL_NAME,
   availableTools,
@@ -156,6 +158,20 @@ export async function* streamAnswer(input: {
       text += piece
       yield { type: 'token', messageId, text: piece }
     }
+    appendMessage(input.sessionId, { ...message, content: text, streaming: false, toolCalls: [] })
+    yield { type: 'message-end', messageId }
+    return
+  }
+
+  // Мост проверяем ДО модели, а не в процессе. Иначе выходит так, как вышло:
+  // человек ждал больше десяти минут, а модель всё это время упиралась в
+  // таймауты и в конце сказала, что моста нет. Проверка стоит одного дешёвого
+  // запроса и отвечает за секунды.
+  const trouble = await bridgeTrouble(input.sessionId)
+  if (trouble) {
+    text = trouble.text
+    yield { type: 'token', messageId, text }
+    yield { type: 'ask', messageId, question: trouble.text, options: trouble.options }
     appendMessage(input.sessionId, { ...message, content: text, streaming: false, toolCalls: [] })
     yield { type: 'message-end', messageId }
     return
@@ -381,6 +397,59 @@ async function* runOpenRouter(input: {
         kind: 'text',
         text: `\n\n[остановился: за ${config.maxToolRounds} кругов работа не сошлась]`,
       }
+    }
+  }
+}
+
+/**
+ * Живой ли мост движка, к которому привязана сессия.
+ *
+ * Проверяется до модели и одним дешёвым читающим вызовом. Смысл не в том,
+ * чтобы поймать редкий сбой, а в том, чтобы не платить за него временем
+ * человека: мёртвый сокет агента выглядит как живой, инструменты публикуются,
+ * и модель узнаёт правду только после нескольких таймаутов подряд.
+ *
+ * Возвращает null, когда всё в порядке.
+ */
+async function bridgeTrouble(
+  sessionId: string,
+): Promise<{ text: string; options: string[] } | null> {
+  const engine = repo.sessionEngine(sessionId)
+  if (!engine || engine === 'blender') return null
+
+  const label = engine === 'rhino' ? 'Rhino' : 'SketchUp'
+  const how =
+    engine === 'rhino'
+      ? 'В Rhino наберите в командной строке MCPStart — плагин поднимет мост на 10501. ' +
+        'Если команда не найдена, плагин RhinoMCP не установлен или Rhino не перезапускался после установки.'
+      : 'В SketchUp откройте «Расширения → MCP Server» и запустите мост. ' +
+        'Если пункта меню нет, плагин не установлен или SketchUp не перезапускался после установки.'
+
+  if (!agents.isOnline(engine)) {
+    return {
+      text:
+        `${label} не на связи: агент не видит запущенного приложения. ` +
+        `Проверьте, что ${label} открыт и агент запущен на вашей машине. ${how}`,
+      options: [`${label} запущен — проверь ещё раз`, 'Работать без движка'],
+    }
+  }
+
+  try {
+    await agents.invoke({
+      engine,
+      command: engine === 'rhino' ? 'mc:get_context' : 'GET /model/info',
+      params: {},
+    })
+    return null
+  } catch (error) {
+    // Приложение числится запущенным, а мост молчит — это и есть тот случай,
+    // ради которого проверка заведена.
+    const why = error instanceof Error ? error.message : 'мост не ответил'
+    return {
+      text:
+        `${label} числится запущенным, но мост не отвечает: ${why}. ` +
+        `Строить сейчас нельзя — вызовы уйдут в пустоту. ${how}`,
+      options: [`Мост поднят — проверь ещё раз`, 'Работать без движка'],
     }
   }
 }
@@ -629,6 +698,9 @@ const SYSTEM_PROMPT = [
   'и дна не имеет, а решает человек. За один заход без остановки набирается два десятка',
   'кругов доводки, о которой никто не просил.',
   'Примитив вместо детали считается браком: коробка вместо курка, труба вместо патрона.',
+  'ЧУЖУЮ РАБОТУ СНАЧАЛА СОХРАНИ. В сцене что-то лежит и это не твоё — сохрани документ',
+  'через mc_save_doc в файл с датой и понятным именем, скажи человеку путь, и только',
+  'потом очищай сцену. Стереть чужую модель без сохранения нельзя ни при каких условиях.',
   'Закладывай технологические зазоры и сопряжения — вещь должна быть похожа на настоящую,',
   'а не на узнаваемый силуэт.',
   'Отвечай по-русски, кратко и по делу.',
