@@ -87,6 +87,9 @@ function snapshotCall(engine: EngineId): { command: string; params: Record<strin
  * передача, и об этом надо сказать словами, иначе на экране будет пустая сцена
  * без объяснения.
  */
+const OPEN_MARK = '<<<COMPLEX-SNAPSHOT'
+const CLOSE_MARK = 'COMPLEX-SNAPSHOT>>>'
+
 function parseSnapshot(engine: EngineId, raw: unknown): Record<string, unknown> {
   if (engine !== 'rhino') return raw as Record<string, unknown>
 
@@ -100,11 +103,17 @@ function parseSnapshot(engine: EngineId, raw: unknown): Record<string, unknown> 
   }
 
   const printed = typeof box?.output === 'string' ? box.output : String(box?.result ?? '')
-  const start = printed.indexOf('{')
-  if (start < 0) throw new Error(`Rhino не вернул снимок: ${printed.slice(0, 200)}`)
+
+  // Берём по меткам, а не «от первой скобки до конца»: плагин печатает ответ
+  // ДВАЖДЫ, и разбор всей строки падал на лишних символах после JSON.
+  const open = printed.indexOf(OPEN_MARK)
+  const close = printed.indexOf(CLOSE_MARK, open + 1)
+  if (open < 0 || close < 0) {
+    throw new Error(`Rhino не вернул снимок: ${printed.slice(0, 200) || 'пустой ответ'}`)
+  }
 
   try {
-    return JSON.parse(printed.slice(start)) as Record<string, unknown>
+    return JSON.parse(printed.slice(open + OPEN_MARK.length, close)) as Record<string, unknown>
   } catch {
     throw new Error(`Снимок Rhino не разобрался, длина ответа ${printed.length} знаков`)
   }
