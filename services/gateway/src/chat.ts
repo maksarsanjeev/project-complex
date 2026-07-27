@@ -1,5 +1,6 @@
 import type {
   ChatEvent,
+  EngineId,
   ChatMessage,
   ModelProvider,
   SelectionRef,
@@ -126,7 +127,14 @@ export async function* streamAnswer(input: {
   text: string
   provider?: ModelProvider
   selection?: SelectionRef[]
+  /**
+   * Движок, выбранный в панели. Главнее записанного в сессии: сессия помнит,
+   * с чем её создали, а человек переключает движок по ходу дела — и ожидает,
+   * что переключатель работает.
+   */
+  engine?: EngineId | null
 }): AsyncGenerator<ChatEvent> {
+  const bound = input.engine ?? repo.sessionEngine(input.sessionId)
   const messageId = newId('m')
   const model = input.provider?.model || config.defaultModel
 
@@ -167,7 +175,7 @@ export async function* streamAnswer(input: {
   // человек ждал больше десяти минут, а модель всё это время упиралась в
   // таймауты и в конце сказала, что моста нет. Проверка стоит одного дешёвого
   // запроса и отвечает за секунды.
-  const trouble = await bridgeTrouble(input.sessionId)
+  const trouble = await bridgeTrouble(bound)
   if (trouble) {
     text = trouble.text
     yield { type: 'token', messageId, text }
@@ -196,7 +204,7 @@ export async function* streamAnswer(input: {
             systemPrompt: [SYSTEM_PROMPT, contextText].filter(Boolean).join('\n\n'),
             selection: input.selection,
           })
-        : runOpenRouter({ sessionId: input.sessionId, model, contextText })
+        : runOpenRouter({ sessionId: input.sessionId, model, contextText, engine: bound })
 
     for await (const piece of pieces) {
       if (piece.kind === 'text') {
@@ -273,8 +281,9 @@ async function* runOpenRouter(input: {
   sessionId: string
   model: string
   contextText: string
+  engine: EngineId | null
 }): AsyncGenerator<LlmPiece> {
-  const tools = availableTools(repo.sessionEngine(input.sessionId))
+  const tools = availableTools(input.engine)
   const conversation: WireMessage[] = [
     {
       role: 'system',
@@ -415,9 +424,8 @@ async function* runOpenRouter(input: {
  * Возвращает null, когда всё в порядке.
  */
 async function bridgeTrouble(
-  sessionId: string,
+  engine: EngineId | null,
 ): Promise<{ text: string; options: string[] } | null> {
-  const engine = repo.sessionEngine(sessionId)
   if (!engine || engine === 'blender') return null
 
   const label = engine === 'rhino' ? 'Rhino' : 'SketchUp'

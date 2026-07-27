@@ -599,6 +599,14 @@ export interface Transport {
     modelId: string
     /** Что выделено во вьюпорте — чтобы «измени выделенный» имел смысл. */
     selection?: SelectionRef[]
+    /**
+     * Движок, выбранный в панели, — он решает, чем модели разрешено работать.
+     *
+     * Без него сервер смотрел на движок, записанный при создании сессии, и
+     * переключатель в интерфейсе не значил ничего: модель уходила строить в
+     * SketchUp из проекта, привязанного к Rhino.
+     */
+    engine?: EngineId
   }): AsyncIterable<ChatEvent>
 
   runJob(spec: JobSpec): AsyncIterable<JobEvent>

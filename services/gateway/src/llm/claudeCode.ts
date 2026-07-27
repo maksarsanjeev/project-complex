@@ -1,5 +1,5 @@
 import { createSdkMcpServer, query, tool } from '@anthropic-ai/claude-agent-sdk'
-import type { SelectionRef } from '@complex/protocol'
+import type { EngineId, SelectionRef } from '@complex/protocol'
 import * as agents from '../agents.ts'
 import { config } from '../config.ts'
 import { nowIso } from '../db/db.ts'
@@ -83,6 +83,8 @@ export async function* runClaudeCode(input: {
   model: string
   systemPrompt: string
   selection?: SelectionRef[]
+  /** Движок, выбранный в панели: он режет список инструментов. */
+  engine?: EngineId | null
 }): AsyncGenerator<LlmPiece> {
   // Расход копится по ходу, а не берётся из итогового сообщения: итог придёт
   // слишком поздно, чтобы на него реагировать. Считаем по сообщениям модели —
@@ -103,7 +105,7 @@ export async function* runClaudeCode(input: {
   let objectsBefore = -1
 
   const queue = new PieceQueue()
-  const defs = availableTools(sessionEngine(input.sessionId))
+  const defs = availableTools(input.engine ?? sessionEngine(input.sessionId))
   const wire = toWireTools(defs)
 
   // Инструменты собираем из тех же описаний, что уходят в OpenRouter, включая

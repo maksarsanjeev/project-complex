@@ -1,8 +1,8 @@
 import type {
   ChatAttachment,
+  EngineId,
   ChatEvent,
   EngineDescriptor,
-  EngineId,
   GraphDoc,
   JobEvent,
   JobSpec,
@@ -172,6 +172,8 @@ export class WsTransport implements Transport {
     attachments?: ChatAttachment[]
     modelId: string
     selection?: SelectionRef[]
+    /** Движок, выбранный в панели: он и решает, чем модели разрешено работать. */
+    engine?: EngineId
   }): AsyncIterable<ChatEvent> {
     return this.stream<ChatEvent>('sendMessage', input)
   }

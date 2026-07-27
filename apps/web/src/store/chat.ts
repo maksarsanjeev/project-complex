@@ -1,3 +1,4 @@
+import { useEngines } from './engine'
 import type { ChatMessage, ProviderTransport, SelectionRef } from '@complex/protocol'
 import { create } from 'zustand'
 import { transport } from '../api/transport'
@@ -77,6 +78,10 @@ export const useChat = create<ChatState>()((set, get) => ({
         sessionId,
         text,
         modelId: get().modelId,
+        // Выбор в панели «Движок» — не украшение: он решает, чем модели
+        // разрешено работать. Раньше сервер смотрел на движок, записанный в
+        // сессии при создании, и переключатель ничего не менял.
+        engine: useEngines.getState().boundEngine,
         selection: currentSelection(),
       })) {
         if (cancelled) break

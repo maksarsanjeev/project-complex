@@ -235,7 +235,9 @@ export const streamMethods: Record<string, StreamMethod> = {
     const provider = providers.find((x) => x.id === s(p.modelId))
     const selection = (p.selection as SelectionRef[] | undefined) ?? undefined
 
-    for await (const event of streamAnswer({ sessionId, text, provider, selection })) {
+    const engine = (s(p.engine) || null) as EngineId | null
+
+    for await (const event of streamAnswer({ sessionId, text, provider, selection, engine })) {
       yield event satisfies ChatEvent
     }
   },
