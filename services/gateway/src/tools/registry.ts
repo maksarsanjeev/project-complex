@@ -1,6 +1,8 @@
+import { config } from '../config.ts'
 import type { EngineDescriptor } from '@complex/protocol'
 import { invoke, onlineEngines } from '../agents.ts'
 import { BLENDER_TOOLS } from './blender.ts'
+import { ITERATION_TOOL } from './iteration.ts'
 import { MCNEEL_TOOLS } from './mcneel.ts'
 import { RHINO_TOOLS } from './rhino.ts'
 import { ASK_TOOL } from './ask.ts'
@@ -58,6 +60,20 @@ function unitsUsable(engine: EngineDescriptor): boolean {
   return instances.some((i) => i.units && MM_ALIASES.has(i.units.trim().toLowerCase()))
 }
 
+/**
+ * Пропускать ли инструмент при выбранном мосте к Rhino.
+ *
+ * Двух наборов сразу модель не выдерживает: в одном ходе она мешает `rh_` и
+ * `mc_`, а описания обоих оплачиваются на каждом круге. К остальным движкам
+ * это отношения не имеет.
+ */
+function bridgeAllows(tool: ToolDef): boolean {
+  if (tool.engine !== 'rhino') return true
+  if (config.rhinoBridge === 'both') return true
+  const mcneel = tool.name.startsWith('mc_')
+  return config.rhinoBridge === 'mcneel' ? mcneel : !mcneel
+}
+
 /** Инструменты для текущего состояния движков — то, что уйдёт в запрос. */
 export function availableTools(): ToolDef[] {
   const usable = new Set(
@@ -66,7 +82,8 @@ export function availableTools(): ToolDef[] {
       .map((engine) => engine.id),
   )
   // Вопрос пользователю доступен всегда: он не про движок, а про разговор.
-  return [ASK_TOOL, ...ALL.filter((tool) => usable.has(tool.engine))]
+  // Вопрос и конец итерации доступны всегда: они про разговор, а не про движок.
+  return [ASK_TOOL, ITERATION_TOOL, ...ALL.filter((t) => usable.has(t.engine) && bridgeAllows(t))]
 }
 
 /**

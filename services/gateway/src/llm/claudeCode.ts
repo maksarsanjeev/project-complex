@@ -1,7 +1,10 @@
 import { createSdkMcpServer, query, tool } from '@anthropic-ai/claude-agent-sdk'
 import type { SelectionRef } from '@complex/protocol'
+import * as agents from '../agents.ts'
 import { config } from '../config.ts'
 import { nowIso } from '../db/db.ts'
+import { takeSnapshot } from '../snapshot.ts'
+import { ITERATION_TOOL_NAME } from '../tools/iteration.ts'
 import {
   ASK_TOOL_NAME,
   availableTools,
@@ -86,6 +89,8 @@ export async function* runClaudeCode(input: {
   const spent = { prompt: 0, completion: 0, cached: 0 }
   let stoppedByBudget = false
   let lastTool = ''
+  /** Чекпойнт за ход бывает один: дальше решает человек. */
+  let checkpoint = false
 
   const queue = new PieceQueue()
   const defs = availableTools()
@@ -119,9 +124,28 @@ export async function* runClaudeCode(input: {
         }
 
         lastTool = item.function.name
+        if (item.function.name === ITERATION_TOOL_NAME) {
+          checkpoint = true
+          queue.push({ kind: 'ask', question: iterationQuestion(args), options: CHOICES })
+          return {
+            content: [{ type: 'text' as const, text: 'Проход показан человеку. Закончи ход и жди ответа.' }],
+          }
+        }
+
         queue.push({ kind: 'tool-start', id, name: item.function.name, args })
         const outcome = await runTool(item.function.name, args)
         queue.push({ kind: 'tool-done', id, name: item.function.name, outcome })
+
+        // Крючок, не зависящий от дисциплины модели: как только в сцене
+        // появилась геометрия, показывать уже есть что. Полагаться на её
+        // собственное «готово» нельзя — за один заход она сделала двадцать
+        // четыре круга доводки и ни разу не решила, что закончила.
+        //
+        // Спрашиваем состояние отдельным дешёвым вызовом и только после
+        // строящих инструментов: у McNeel `get_context` для того и заведён.
+        if (!checkpoint && BUILDING.has(item.function.name) && (await hasGeometry())) {
+          checkpoint = true
+        }
 
         // Картинка идёт блоком ответа, а не отдельным сообщением: MCP это
         // умеет, и модель видит снимок ровно там, где просила его сделать.
@@ -203,6 +227,17 @@ export async function* runClaudeCode(input: {
             spent.prompt +=
               (used.input_tokens ?? 0) + cached + (used.cache_creation_input_tokens ?? 0)
             spent.completion += used.output_tokens ?? 0
+          }
+
+          // Чекпойнт по появлению геометрии: обрываем на границе хода модели,
+          // а не посреди набора инструментов — иначе часть вызовов останется
+          // без ответа, и продолжение начнётся с путаницы.
+          if (checkpoint && !stoppedByBudget) {
+            stoppedByBudget = true
+            await run.interrupt().catch(() => {})
+            await takeSnapshot('rhino', undefined, input.sessionId).catch(() => null)
+            queue.push({ kind: 'usage', usage: { ...spent } })
+            break
           }
 
           const total = spent.prompt + spent.completion
@@ -308,6 +343,46 @@ function budgetQuestion(total: number, lastTool: string): string {
     'Продолжать? Ответьте «продолжай» — я вернусь ровно туда, где остановился, ' +
     'с новым бюджетом. Ответьте «хватит» — оставлю как есть и расскажу, что успел.'
   )
+}
+
+/** Варианты ответа на чекпойнте — три, как и просили. */
+const CHOICES = ['Продолжить итерации', 'Оставить как есть', 'Скажу своими словами']
+
+/** Инструменты, после которых в сцене могла появиться геометрия. */
+const BUILDING = new Set(['mc_run_python', 'mc_run_command', 'rh_run_python', 'rh_create_objects'])
+
+/**
+ * Есть ли в документе хоть что-нибудь.
+ *
+ * Отдельный дешёвый вызов вместо снимка: снимок Rhino — это мегабайты, и
+ * дёргать его после каждого скрипта значило бы платить за проверку дороже,
+ * чем за работу. `get_context` заведён у McNeel ровно для такого.
+ */
+async function hasGeometry(): Promise<boolean> {
+  try {
+    const raw = (await agents.invoke({
+      engine: 'rhino',
+      command: 'mc:get_context',
+      params: {},
+    })) as { output?: string }
+    const box = JSON.parse(String(raw?.output ?? '{}')) as { document?: { objectCount?: number } }
+    return (box.document?.objectCount ?? 0) > 0
+  } catch {
+    // Не спросилось — не повод обрывать работу. Останется бюджетный крючок.
+    return false
+  }
+}
+
+/** Что показать человеку на чекпойнте: сделанное и честно слабое. */
+function iterationQuestion(args: Record<string, unknown>): string {
+  const done = String(args.done ?? '').trim()
+  const weak = String(args.weak ?? '').trim()
+
+  const lines = ['Проход завершён. Модель загружена во вьюпорт — посмотрите.', '', done]
+  if (weak) lines.push('', `Сам считаю слабым: ${weak}`)
+  lines.push('', 'Продолжать итерации, оставить как есть или скажете своими словами?')
+
+  return lines.join('\n')
 }
 
 /** Читающие инструменты узнаём по имени — так же, как их называет реестр. */
