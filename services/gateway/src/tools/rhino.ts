@@ -193,6 +193,21 @@ export const RHINO_TOOLS: ToolDef[] = [
     },
   },
   {
+    name: 'rh_zoom_extents',
+    engine: 'rhino',
+    command: 'execute_rhinoscript_python_code',
+    description:
+      'Вписать всю модель в кадр. Вызывай ПЕРЕД снимком: вид Rhino остаётся там, где его оставил ' +
+      'человек, и построенное запросто окажется за краем кадра — снимок покажет пустоту, ' +
+      'хотя геометрия на месте.',
+    parameters: { type: 'object', properties: {} },
+    mapParams: () => ({
+      code: 'import rhinoscriptsyntax as rs
+rs.ZoomExtents(all=True)
+print("вид вписан")',
+    }),
+  },
+  {
     name: 'rh_capture_viewport',
     engine: 'rhino',
     command: 'capture_viewport',
