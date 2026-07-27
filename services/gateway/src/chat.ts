@@ -15,6 +15,10 @@ import {
   runTool,
   toWireTools,
 } from './tools/registry.ts'
+import { cliConfigured, runClaudeCode } from './llm/claudeCode.ts'
+import type { LlmPiece, Usage } from './llm/piece.ts'
+
+export type { Usage } from './llm/piece.ts'
 
 /**
  * Живой ответ модели через OpenRouter — один ключ на множество моделей,
@@ -136,7 +140,6 @@ export async function* streamAnswer(input: {
   yield { type: 'message-start', message }
 
   let text = ''
-  let asked = false
   const toolCalls: ToolCall[] = []
   // Расход копится по всем кругам хода: один вопрос пользователя может стоить
   // нескольких обращений к модели, и считать надо ход целиком.
@@ -158,136 +161,66 @@ export async function* streamAnswer(input: {
     return
   }
 
-  const tools = availableTools()
-  const conversation: WireMessage[] = [
-    {
-      role: 'system',
-      /*
-        Системное сообщение разбито НАДВОЕ ради кэша, и порядок здесь не косметика.
-
-        Кэш работает по совпадающему НАЧАЛУ запроса: провайдер запоминает всё до
-        пометки и в следующий раз не считает заново — примерно вдесятеро дешевле.
-        Описания инструментов идут в запросе перед системным сообщением, поэтому
-        пометка на первом блоке кэширует и их — а это самая тяжёлая и самая
-        неизменная часть, около 3 600 токенов на каждом ходу.
-
-        Во второй блок уходит всё, что меняется от сообщения к сообщению:
-        состояние движков и текущее выделение. Будь они в первом, кэш промахивался
-        бы каждый раз, когда человек выделил другой объект, — то есть всегда.
-      */
-      content: [
-        { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
-        {
-          type: 'text',
-          text: [engineSummary(), describeSelection(input.selection)].filter(Boolean).join('\n\n'),
-        },
-      ],
-    },
-    ...buildHistory(input.sessionId),
-  ]
+  // Строки, которые меняются от хода к ходу: что запущено и что выделено.
+  const contextText = [engineSummary(), describeSelection(input.selection)]
+    .filter(Boolean)
+    .join('\n\n')
 
   try {
-    // Круг = один запрос к модели. Пока она просит инструменты — продолжаем.
-    for (let round = 0; round < config.maxToolRounds; round++) {
-      const result: Round = { text: '', calls: [] }
+    const pieces =
+      input.provider?.transport === 'cli'
+        ? runClaudeCode({
+            sessionId: input.sessionId,
+            text: input.text,
+            model: input.provider.model,
+            // У Agent SDK нет отдельных блоков с метками кэша: он кэширует
+            // разговор сам, продолжая свою сессию. Поэтому подсказка склеена
+            // в одну строку — делить её тут больше не за чем.
+            systemPrompt: [SYSTEM_PROMPT, contextText].filter(Boolean).join('\n\n'),
+            selection: input.selection,
+          })
+        : runOpenRouter({ sessionId: input.sessionId, model, contextText })
 
-      for await (const piece of streamRound(conversation, model, tools)) {
-        if (piece.kind === 'text') {
-          result.text += piece.text
-          text += piece.text
-          yield { type: 'token', messageId, text: piece.text }
-        } else if (piece.kind === 'usage') {
-          spent.prompt += piece.usage.prompt
-          spent.completion += piece.usage.completion
-          spent.cached += piece.usage.cached
-          spent.cost = (spent.cost ?? 0) + (piece.usage.cost ?? 0)
-        } else {
-          result.calls = piece.calls
+    for await (const piece of pieces) {
+      if (piece.kind === 'text') {
+        text += piece.text
+        yield { type: 'token', messageId, text: piece.text }
+      } else if (piece.kind === 'usage') {
+        spent.prompt += piece.usage.prompt
+        spent.completion += piece.usage.completion
+        spent.cached += piece.usage.cached
+        spent.cost = (spent.cost ?? 0) + (piece.usage.cost ?? 0)
+      } else if (piece.kind === 'tool-start') {
+        yield {
+          type: 'tool-call',
+          messageId,
+          toolCall: {
+            id: piece.id,
+            name: piece.name,
+            // Настоящий движок известен только после выполнения — до него
+            // подставляем SketchUp, чтобы блок вызова было чем нарисовать.
+            engine: 'sketchup',
+            status: 'running',
+            code: JSON.stringify(piece.args),
+          },
         }
-      }
-
-      if (!result.calls.length) break
-
-      conversation.push({
-        role: 'assistant',
-        content: result.text || null,
-        tool_calls: result.calls,
-      })
-
-      // Вопрос пользователю обрывает ход: ответом станет его следующее
-      // сообщение. Обрабатываем ДО остальных вызовов — если модель заодно
-      // попросила что-то построить, строить вслепую как раз и не надо.
-      const ask = result.calls.find((c) => c.function.name === ASK_TOOL_NAME)
-      if (ask) {
-        const args = parseArguments(ask.function.arguments)
-        const question = String(args.question ?? '').trim()
-        const options = Array.isArray(args.options) ? args.options.map(String) : undefined
-        if (question) {
-          yield { type: 'ask', messageId, question, options }
-          // Вопрос попадает и в текст ответа: иначе после перезагрузки
-          // страницы в переписке осталась бы пустота вместо заданного вопроса.
-          text += (text ? '\n\n' : '') + question
-          asked = true
-          break
-        }
-      }
-
-      for (const call of result.calls) {
-        const args = parseArguments(call.function.arguments)
-
-        const started: ToolCall = {
-          id: call.id,
-          name: call.function.name,
-          engine: 'sketchup',
-          status: 'running',
-          code: call.function.arguments,
-        }
-        yield { type: 'tool-call', messageId, toolCall: started }
-
-        const outcome = await runTool(call.function.name, args)
-
+      } else if (piece.kind === 'tool-done') {
         const finished: ToolCall = {
-          ...started,
-          engine: outcome.engine,
-          status: outcome.ok ? 'ok' : 'error',
-          code: outcome.code,
-          result: outcome.content,
-          durationMs: outcome.durationMs,
+          id: piece.id,
+          name: piece.name,
+          engine: piece.outcome.engine,
+          status: piece.outcome.ok ? 'ok' : 'error',
+          code: piece.outcome.code,
+          result: piece.outcome.content,
+          durationMs: piece.outcome.durationMs,
         }
         toolCalls.push(finished)
         yield { type: 'tool-update', messageId, toolCall: finished }
-
-        conversation.push({
-          role: 'tool',
-          tool_call_id: call.id,
-          content: outcome.content,
-        })
-
-        // Снимок вьюпорта модель должна УВИДЕТЬ, а не прочитать описанием.
-        // Ответ инструмента несёт только текст — так устроен формат, — поэтому
-        // картинка идёт следом отдельным сообщением. Без этого «посмотри на
-        // модель» осталось бы фигурой речи.
-        if (outcome.image) {
-          conversation.push({
-            role: 'user',
-            content: [
-              { type: 'text', text: 'Вот снимок вьюпорта по твоему запросу. Посмотри и оцени результат.' },
-              {
-                type: 'image_url',
-                image_url: { url: `data:${outcome.image.mime};base64,${outcome.image.base64}` },
-              },
-            ],
-          })
-        }
-      }
-
-      if (asked) break
-
-      // Круги кончились, а модель всё просит инструменты — говорим прямо.
-      if (round === config.maxToolRounds - 1) {
-        const note = `\n\n[остановился: за ${config.maxToolRounds} кругов работа не сошлась]`
-        text += note
-        yield { type: 'token', messageId, text: note }
+      } else {
+        yield { type: 'ask', messageId, question: piece.question, options: piece.options }
+        // Вопрос попадает и в текст ответа: иначе после перезагрузки страницы
+        // в переписке осталась бы пустота вместо заданного вопроса.
+        text += (text ? '\n\n' : '') + piece.question
       }
     }
   } catch (error) {
@@ -312,6 +245,125 @@ export async function* streamAnswer(input: {
 
   yield { type: 'usage', messageId, usage: spent }
   yield { type: 'message-end', messageId }
+}
+
+/**
+ * Цикл инструментов на стороне OpenRouter: спросили — выполнили — спросили
+ * снова. У Agent SDK этот цикл свой, поэтому здесь он живёт отдельно, а не
+ * посреди общего хода.
+ */
+async function* runOpenRouter(input: {
+  sessionId: string
+  model: string
+  contextText: string
+}): AsyncGenerator<LlmPiece> {
+  const tools = availableTools()
+  const conversation: WireMessage[] = [
+    {
+      role: 'system',
+      /*
+        Системное сообщение разбито НАДВОЕ ради кэша, и порядок здесь не косметика.
+
+        Кэш работает по совпадающему НАЧАЛУ запроса: провайдер запоминает всё до
+        пометки и в следующий раз не считает заново — примерно вдесятеро дешевле.
+        Описания инструментов идут в запросе перед системным сообщением, поэтому
+        пометка на первом блоке кэширует и их — а это самая тяжёлая и самая
+        неизменная часть, около 3 600 токенов на каждом ходу.
+
+        Во второй блок уходит всё, что меняется от сообщения к сообщению:
+        состояние движков и текущее выделение. Будь они в первом, кэш промахивался
+        бы каждый раз, когда человек выделил другой объект, — то есть всегда.
+      */
+      content: [
+        { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
+        { type: 'text', text: input.contextText },
+      ],
+    },
+    ...buildHistory(input.sessionId),
+  ]
+
+  let asked = false
+
+  // Круг = один запрос к модели. Пока она просит инструменты — продолжаем.
+  for (let round = 0; round < config.maxToolRounds; round++) {
+    const result: Round = { text: '', calls: [] }
+
+    for await (const piece of streamRound(conversation, input.model, tools)) {
+      if (piece.kind === 'text') {
+        result.text += piece.text
+        yield { kind: 'text', text: piece.text }
+      } else if (piece.kind === 'usage') {
+        yield { kind: 'usage', usage: piece.usage }
+      } else {
+        result.calls = piece.calls
+      }
+    }
+
+    if (!result.calls.length) break
+
+    conversation.push({
+      role: 'assistant',
+      content: result.text || null,
+      tool_calls: result.calls,
+    })
+
+    // Вопрос пользователю обрывает ход: ответом станет его следующее
+    // сообщение. Обрабатываем ДО остальных вызовов — если модель заодно
+    // попросила что-то построить, строить вслепую как раз и не надо.
+    const ask = result.calls.find((c) => c.function.name === ASK_TOOL_NAME)
+    if (ask) {
+      const args = parseArguments(ask.function.arguments)
+      const question = String(args.question ?? '').trim()
+      const options = Array.isArray(args.options) ? args.options.map(String) : undefined
+      if (question) {
+        yield { kind: 'ask', question, options }
+        asked = true
+        break
+      }
+    }
+
+    for (const call of result.calls) {
+      const args = parseArguments(call.function.arguments)
+
+      yield { kind: 'tool-start', id: call.id, name: call.function.name, args }
+      const outcome = await runTool(call.function.name, args)
+      yield { kind: 'tool-done', id: call.id, name: call.function.name, outcome }
+
+      conversation.push({
+        role: 'tool',
+        tool_call_id: call.id,
+        content: outcome.content,
+      })
+
+      // Снимок вьюпорта модель должна УВИДЕТЬ, а не прочитать описанием.
+      // Ответ инструмента в формате OpenAI несёт только текст, поэтому
+      // картинка идёт следом отдельным сообщением. Без этого «посмотри на
+      // модель» осталось бы фигурой речи. У Agent SDK так изворачиваться не
+      // приходится: там картинка — законный блок ответа инструмента.
+      if (outcome.image) {
+        conversation.push({
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Вот снимок вьюпорта по твоему запросу. Посмотри и оцени результат.' },
+            {
+              type: 'image_url',
+              image_url: { url: `data:${outcome.image.mime};base64,${outcome.image.base64}` },
+            },
+          ],
+        })
+      }
+    }
+
+    if (asked) break
+
+    // Круги кончились, а модель всё просит инструменты — говорим прямо.
+    if (round === config.maxToolRounds - 1) {
+      yield {
+        kind: 'text',
+        text: `\n\n[остановился: за ${config.maxToolRounds} кругов работа не сошлась]`,
+      }
+    }
+  }
 }
 
 /**
@@ -365,11 +417,10 @@ function describeSelection(selection?: SelectionRef[]): string {
  */
 function explainUnavailable(provider?: ModelProvider): string | null {
   if (provider?.transport === 'cli') {
-    return (
-      `${provider.label} пока не подключён: запуск локальных CLI-агентов — следующий этап. ` +
-      'Сообщение сохранено в переписке. Переключись на API в шапке чата — ' +
-      'там Claude через OpenRouter, и он умеет управлять движками.'
-    )
+    return cliConfigured()
+      ? null
+      : `${provider.label} не настроен: на сервере нет ни CLAUDE_CODE_OAUTH_TOKEN, ` +
+        'ни ANTHROPIC_API_KEY. Сообщение сохранено, выбери другую модель.'
   }
 
   if (provider && !provider.configured) {
@@ -403,19 +454,6 @@ type RoundPiece =
   | { kind: 'calls'; calls: WireToolCall[] }
   /** Сколько стоил круг. Приходит последним кадром потока. */
   | { kind: 'usage'; usage: Usage }
-
-/**
- * Расход по одному обращению к модели.
- *
- * `cached` — сколько токенов ввода взято из кэша вместо пересчёта. Именно эта
- * цифра показывает, работает ли кэширование подсказки: без него она всегда 0.
- */
-export interface Usage {
-  prompt: number
-  completion: number
-  cached: number
-  cost?: number
-}
 
 async function* streamRound(
   messages: WireMessage[],

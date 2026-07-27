@@ -31,9 +31,15 @@ FROM node:24-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Единственная зависимость времени выполнения — ws. Протокол состоит из одних
-# типов и в собранный код не попадает, SQLite встроен в Node.
-COPY --from=build /app/node_modules/ws ./node_modules/ws
+# Зависимости времени выполнения. Протокол состоит из одних типов и в
+# собранный код не попадает, SQLite встроен в Node.
+#
+# Agent SDK кладём целиком: это второй провайдер модели, и он самодостаточен —
+# ни одной сторонней зависимости, движок Claude Code упакован прямо в sdk.mjs.
+# Отдельно ставить claude на образ не нужно.
+COPY --from=build /app/node_modules/ws           ./node_modules/ws
+COPY --from=build /app/node_modules/zod          ./node_modules/zod
+COPY --from=build /app/node_modules/@anthropic-ai ./node_modules/@anthropic-ai
 
 COPY --from=build /app/services/gateway/dist ./dist
 COPY --from=build /app/apps/web/dist         ./web

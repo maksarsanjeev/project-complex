@@ -14,6 +14,7 @@ import type {
 } from '@complex/protocol'
 import * as agents from './agents.ts'
 import { streamAnswer } from './chat.ts'
+import { cliConfigured } from './llm/claudeCode.ts'
 import { config } from './config.ts'
 import { newId, nowIso } from './db/db.ts'
 import * as repo from './db/repo.ts'
@@ -167,14 +168,16 @@ export const methods: Record<string, Method> = {
       configured: Boolean(config.openRouterKey),
       capabilities: ['text', 'vision', 'tools'],
     },
-    // CLI-агенты появятся вместе с агентом на машине пользователя.
+    // Тот же движок, что у Claude Code, библиотекой внутри gateway. Цикл
+    // инструментов крутит SDK, кэш разговора держит он же — на повторных ходах
+    // это заметно дешевле, чем собирать историю самим.
     {
       id: 'claude-cli',
       provider: 'anthropic',
       model: 'claude-opus-5',
-      label: 'Claude Code CLI',
+      label: 'Claude Opus 5 (Agent SDK)',
       transport: 'cli',
-      configured: false,
+      configured: cliConfigured(),
       capabilities: ['text', 'vision', 'tools', 'long-context'],
     },
   ],
