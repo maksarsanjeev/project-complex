@@ -15,6 +15,7 @@ import type {
 import * as agents from './agents.ts'
 import { streamAnswer } from './chat.ts'
 import { cliConfigured } from './llm/claudeCode.ts'
+import { rhinoScript } from './tools/scripts.ts'
 import { config } from './config.ts'
 import { newId, nowIso } from './db/db.ts'
 import * as repo from './db/repo.ts'
@@ -59,6 +60,47 @@ const KNOWN_ENGINES: EngineDescriptor[] = [
  * дальше по системе идентификатор уже уникален, и думать о движке не нужно.
  */
 const PREFIX: Record<EngineId, string> = { sketchup: 'su', rhino: 'rh', blender: 'bl' }
+
+/**
+ * Чем спросить снимок у каждого движка.
+ *
+ * У SketchUp это наш собственный маршрут: мост писали мы, и он сразу отдаёт
+ * готовую структуру. У Rhino моста нашего нет — там чужой плагин, и всё, что
+ * он умеет, это выполнить питон и вернуть НАПЕЧАТАННОЕ. Поэтому снимок Rhino
+ * приходит строкой, которую надо разобрать (см. `parseSnapshot`).
+ */
+function snapshotCall(engine: EngineId): { command: string; params: Record<string, unknown> } {
+  if (engine === 'rhino') {
+    return {
+      command: 'execute_rhinoscript_python_code',
+      params: { code: rhinoScript('snapshot.py') },
+    }
+  }
+  return { command: 'GET /model/mesh', params: {} }
+}
+
+/**
+ * Снимок Rhino приезжает напечатанной строкой внутри `{success, output}`.
+ *
+ * Разбирать приходится здесь, а не в скрипте: печать — единственный канал,
+ * который даёт чужой плагин. Не разобралось — виновата не структура, а сама
+ * передача, и об этом надо сказать словами, иначе на экране будет пустая сцена
+ * без объяснения.
+ */
+function parseSnapshot(engine: EngineId, raw: unknown): Record<string, unknown> {
+  if (engine !== 'rhino') return raw as Record<string, unknown>
+
+  const box = raw as { output?: unknown; result?: unknown }
+  const printed = typeof box?.output === 'string' ? box.output : String(box?.result ?? '')
+  const start = printed.indexOf('{')
+  if (start < 0) throw new Error(`Rhino не вернул снимок: ${printed.slice(0, 200)}`)
+
+  try {
+    return JSON.parse(printed.slice(start)) as Record<string, unknown>
+  } catch {
+    throw new Error(`Снимок Rhino не разобрался, длина ответа ${printed.length} знаков`)
+  }
+}
 
 function namespace(snapshot: ModelSnapshot, engine: EngineId): ModelSnapshot {
   const p = PREFIX[engine]
@@ -194,12 +236,11 @@ export const methods: Record<string, Method> = {
     if (!agents.isOnline(engine)) return null
 
     const instance = s(p.instance) || undefined
-    const raw = (await agents.invoke({
-      engine,
-      instance,
-      command: 'GET /model/mesh',
-      params: {},
-    })) as Omit<ModelSnapshot, 'engine' | 'instance' | 'takenAt'>
+    const answer = await agents.invoke({ engine, instance, ...snapshotCall(engine) })
+    const raw = parseSnapshot(engine, answer) as unknown as Omit<
+      ModelSnapshot,
+      'engine' | 'instance' | 'takenAt'
+    >
 
     const snapshot: ModelSnapshot = namespace(
       { ...raw, engine, instance, takenAt: nowIso() },
