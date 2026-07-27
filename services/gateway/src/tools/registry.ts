@@ -1,5 +1,5 @@
 import { config } from '../config.ts'
-import type { EngineDescriptor } from '@complex/protocol'
+import type { EngineDescriptor, EngineId } from '@complex/protocol'
 import { invoke, onlineEngines } from '../agents.ts'
 import { BLENDER_TOOLS } from './blender.ts'
 import { ITERATION_TOOL } from './iteration.ts'
@@ -75,7 +75,7 @@ function bridgeAllows(tool: ToolDef): boolean {
 }
 
 /** Инструменты для текущего состояния движков — то, что уйдёт в запрос. */
-export function availableTools(): ToolDef[] {
+export function availableTools(bound?: EngineId | null): ToolDef[] {
   const usable = new Set(
     onlineEngines()
       .filter(unitsUsable)
@@ -83,7 +83,20 @@ export function availableTools(): ToolDef[] {
   )
   // Вопрос пользователю доступен всегда: он не про движок, а про разговор.
   // Вопрос и конец итерации доступны всегда: они про разговор, а не про движок.
-  return [ASK_TOOL, ITERATION_TOOL, ...ALL.filter((t) => usable.has(t.engine) && bridgeAllows(t))]
+  return [
+    ASK_TOOL,
+    ITERATION_TOOL,
+    ...ALL.filter(
+      (t) =>
+        usable.has(t.engine) &&
+        bridgeAllows(t) &&
+        // Движок сессии — не подсказка, а ограничение. Пока инструменты
+        // публиковались для всех запущенных приложений сразу, модель уходила
+        // строить в SketchUp из проекта, привязанного к Rhino, и человек ловил
+        // её на этом раз за разом. Выбор в шапке проекта должен что-то значить.
+        (!bound || t.engine === bound),
+    ),
+  ]
 }
 
 /**

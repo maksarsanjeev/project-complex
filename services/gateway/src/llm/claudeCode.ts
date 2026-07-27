@@ -3,6 +3,7 @@ import type { SelectionRef } from '@complex/protocol'
 import * as agents from '../agents.ts'
 import { config } from '../config.ts'
 import { nowIso } from '../db/db.ts'
+import { sessionEngine } from '../db/repo.ts'
 import { takeSnapshot } from '../snapshot.ts'
 import { ITERATION_TOOL_NAME } from '../tools/iteration.ts'
 import {
@@ -102,7 +103,7 @@ export async function* runClaudeCode(input: {
   let objectsBefore = -1
 
   const queue = new PieceQueue()
-  const defs = availableTools()
+  const defs = availableTools(sessionEngine(input.sessionId))
   const wire = toWireTools(defs)
 
   // Инструменты собираем из тех же описаний, что уходят в OpenRouter, включая
