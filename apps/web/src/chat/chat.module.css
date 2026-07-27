@@ -15,6 +15,8 @@
   height: var(--row);
   padding: 0 8px;
   flex: none;
+  /* Точка отсчёта для полосы «модель отвечает». */
+  position: relative;
   border-bottom: var(--hair) solid var(--line);
 }
 
@@ -276,4 +278,63 @@
 .sendBtn--stop {
   background: transparent;
   color: var(--ink);
+}
+
+/* ── модель отвечает ──────────────────────────────────────────── */
+
+/*
+  Бегущая диагональная штриховка — принятый в этом интерфейсе знак работы.
+  Полоса тянется по всей шапке чата, поэтому заметна и когда лента прокручена,
+  и когда ответ ещё не начал печататься.
+*/
+.busy {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--ink) 0 4px,
+    transparent 4px 8px
+  );
+  background-size: 11.4px 100%;
+  animation: busyRun 600ms linear infinite;
+  pointer-events: none;
+}
+
+@keyframes busyRun {
+  to {
+    background-position: 11.4px 0;
+  }
+}
+
+/* Движение — знак, а не украшение: кому оно мешает, показываем ровную полосу. */
+@media (prefers-reduced-motion: reduce) {
+  .busy {
+    animation: none;
+  }
+}
+
+/* ── варианты ответа на вопрос модели ─────────────────────────── */
+
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 12px 0;
+}
+
+.option {
+  font: var(--font-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: none;
+  border: 1px solid var(--hairline);
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.option:hover {
+  background: var(--ink);
+  color: var(--paper);
 }

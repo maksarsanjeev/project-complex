@@ -100,6 +100,7 @@ export const en: Record<I18nKey, string> = {
   'chat.title': 'dialogue',
   'chat.placeholder': 'describe what to model. / — commands',
   'chat.send': 'send',
+  'chat.answering': 'answering…',
   'chat.stop': 'stop',
   'chat.attach': 'attach',
   'chat.mode.api': 'api',

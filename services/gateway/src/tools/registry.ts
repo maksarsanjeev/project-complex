@@ -2,6 +2,7 @@ import type { EngineDescriptor } from '@complex/protocol'
 import { invoke, onlineEngines } from '../agents.ts'
 import { BLENDER_TOOLS } from './blender.ts'
 import { RHINO_TOOLS } from './rhino.ts'
+import { ASK_TOOL } from './ask.ts'
 import { SKETCHUP_TOOLS } from './sketchup.ts'
 import type { ToolDef } from './types.ts'
 
@@ -17,6 +18,9 @@ import type { ToolDef } from './types.ts'
  */
 
 const ALL: ToolDef[] = [...SKETCHUP_TOOLS, ...RHINO_TOOLS, ...BLENDER_TOOLS]
+
+/** Имя инструмента-вопроса: цикл разговора обрабатывает его сам, без движка. */
+export const ASK_TOOL_NAME = ASK_TOOL.name
 
 const BY_NAME = new Map(ALL.map((tool) => [tool.name, tool]))
 
@@ -55,7 +59,8 @@ export function availableTools(): ToolDef[] {
       .filter(unitsUsable)
       .map((engine) => engine.id),
   )
-  return ALL.filter((tool) => usable.has(tool.engine))
+  // Вопрос пользователю доступен всегда: он не про движок, а про разговор.
+  return [ASK_TOOL, ...ALL.filter((tool) => usable.has(tool.engine))]
 }
 
 /**
@@ -165,6 +170,14 @@ export interface ToolOutcome {
   code: string
   durationMs: number
   engine: ToolDef['engine']
+  /**
+   * Картинка, которую модель должна УВИДЕТЬ, а не прочитать описанием.
+   *
+   * Формат ответа инструмента этого не позволяет: там только текст. Поэтому
+   * снимок отправляется следом отдельным сообщением с изображением — так
+   * устроены все совместимые с OpenAI интерфейсы.
+   */
+  image?: { mime: string; base64: string }
 }
 
 /**
@@ -196,6 +209,22 @@ export async function runTool(name: string, args: Record<string, unknown>): Prom
 
   try {
     const result = await invoke({ engine: tool.engine, instance, command, params })
+
+    // Снимок вьюпорта приходит в base64 внутри ответа. В переписку с моделью
+    // он идёт картинкой, а в текст результата — только сведения о нём: иначе
+    // мегабайт base64 осел бы в истории и в базе.
+    const shot = result as { base64?: string; mime?: string; width?: number; height?: number }
+    if (shot?.base64 && shot.mime?.startsWith('image/')) {
+      return {
+        ok: true,
+        content: `снимок вьюпорта ${shot.width}×${shot.height}`,
+        code,
+        durationMs: Date.now() - started,
+        engine: tool.engine,
+        image: { mime: shot.mime, base64: shot.base64 },
+      }
+    }
+
     return {
       ok: true,
       content: typeof result === 'string' ? result : JSON.stringify(result),

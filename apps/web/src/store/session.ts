@@ -1,6 +1,7 @@
 import type { ChatEvent, ChatMessage, GraphDoc, ParamValue, Session } from '@complex/protocol'
 import { create } from 'zustand'
 import { transport } from '../api/transport'
+import { useChat } from './chat'
 import { useModel } from './model'
 
 interface SessionState {
@@ -167,6 +168,12 @@ export const useSession = create<SessionState>()((set, get) => ({
             m.id === event.messageId ? { ...m, streaming: false } : m,
           ),
         }))
+        break
+
+      case 'ask':
+        // Вопрос уже пришёл текстом в самом ответе — здесь остаются только
+        // варианты, чтобы показать их кнопками под полем ввода.
+        useChat.getState().setPendingOptions(event.options ?? [])
         break
 
       case 'scene-patch':

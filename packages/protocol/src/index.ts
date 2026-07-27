@@ -207,6 +207,14 @@ export type ChatEvent =
   | { type: 'tool-call'; messageId: string; toolCall: ToolCall }
   | { type: 'tool-update'; messageId: string; toolCall: ToolCall }
   | { type: 'scene-patch'; nodes: SceneNode[] }
+  /**
+   * Модель спрашивает пользователя и ждёт ответа.
+   *
+   * Нужно там, где догадка дороже вопроса: в каком окне работать, какой
+   * материал, сносить ли существующее. Раньше выбор в таких местах модель
+   * делала за человека — и иногда не тот.
+   */
+  | { type: 'ask'; messageId: string; question: string; options?: string[] }
   | { type: 'message-end'; messageId: string }
   | { type: 'error'; message: string }
 

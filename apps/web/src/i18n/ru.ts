@@ -105,6 +105,7 @@ export const ru = {
   'chat.title': 'диалог',
   'chat.placeholder': 'опишите, что моделим. / — команды',
   'chat.send': 'отправить',
+  'chat.answering': 'отвечает…',
   'chat.stop': 'стоп',
   'chat.attach': 'вложение',
   'chat.mode.api': 'api',

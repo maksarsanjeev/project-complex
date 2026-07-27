@@ -8,7 +8,13 @@ import type {
 import { config } from './config.ts'
 import { newId, nowIso } from './db/db.ts'
 import { appendMessage, listMessages } from './db/repo.ts'
-import { availableTools, engineSummary, runTool, toWireTools } from './tools/registry.ts'
+import {
+  ASK_TOOL_NAME,
+  availableTools,
+  engineSummary,
+  runTool,
+  toWireTools,
+} from './tools/registry.ts'
 
 /**
  * Живой ответ модели через OpenRouter — один ключ на множество моделей,
@@ -36,8 +42,14 @@ interface WireToolCall {
   function: { name: string; arguments: string }
 }
 
+/** Кусок содержимого: текст или картинка. Картинки бывают только у роли user. */
+type WireContent =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+
 type WireMessage =
-  | { role: 'system' | 'user'; content: string }
+  | { role: 'system'; content: string }
+  | { role: 'user'; content: string | WireContent[] }
   | { role: 'assistant'; content: string | null; tool_calls?: WireToolCall[] }
   | { role: 'tool'; tool_call_id: string; content: string }
 
@@ -118,6 +130,7 @@ export async function* streamAnswer(input: {
   yield { type: 'message-start', message }
 
   let text = ''
+  let asked = false
   const toolCalls: ToolCall[] = []
 
   // Модель, которую нельзя вызвать, лучше назвать вслух, чем отправить запрос
@@ -170,6 +183,24 @@ export async function* streamAnswer(input: {
         tool_calls: result.calls,
       })
 
+      // Вопрос пользователю обрывает ход: ответом станет его следующее
+      // сообщение. Обрабатываем ДО остальных вызовов — если модель заодно
+      // попросила что-то построить, строить вслепую как раз и не надо.
+      const ask = result.calls.find((c) => c.function.name === ASK_TOOL_NAME)
+      if (ask) {
+        const args = parseArguments(ask.function.arguments)
+        const question = String(args.question ?? '').trim()
+        const options = Array.isArray(args.options) ? args.options.map(String) : undefined
+        if (question) {
+          yield { type: 'ask', messageId, question, options }
+          // Вопрос попадает и в текст ответа: иначе после перезагрузки
+          // страницы в переписке осталась бы пустота вместо заданного вопроса.
+          text += (text ? '\n\n' : '') + question
+          asked = true
+          break
+        }
+      }
+
       for (const call of result.calls) {
         const args = parseArguments(call.function.arguments)
 
@@ -200,7 +231,26 @@ export async function* streamAnswer(input: {
           tool_call_id: call.id,
           content: outcome.content,
         })
+
+        // Снимок вьюпорта модель должна УВИДЕТЬ, а не прочитать описанием.
+        // Ответ инструмента несёт только текст — так устроен формат, — поэтому
+        // картинка идёт следом отдельным сообщением. Без этого «посмотри на
+        // модель» осталось бы фигурой речи.
+        if (outcome.image) {
+          conversation.push({
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Вот снимок вьюпорта по твоему запросу. Посмотри и оцени результат.' },
+              {
+                type: 'image_url',
+                image_url: { url: `data:${outcome.image.mime};base64,${outcome.image.base64}` },
+              },
+            ],
+          })
+        }
       }
+
+      if (asked) break
 
       // Круги кончились, а модель всё просит инструменты — говорим прямо.
       if (round === config.maxToolRounds - 1) {
@@ -417,6 +467,8 @@ const SYSTEM_PROMPT = [
   'Прежде чем править существующую геометрию, посмотри на неё соответствующим инструментом:',
   'идентификаторы объектов нельзя угадать, их получают из списка.',
   'Никогда не сообщай, что построил что-то, если вызов инструмента не прошёл.',
+  'У тебя есть глаза: su_look показывает снимок вьюпорта, и ты его действительно видишь.',
+  'После построения сложного объекта посмотри на него — числа сходятся и у вывернутой геометрии.',
   '',
   'ПРОВЕРЯЙ РЕЗУЛЬТАТ, А НЕ ФАКТ ВЫЗОВА. Успешный вызов означает только то, что команда',
   'дошла до движка, — но не то, что получилось задуманное. После каждой правки перечитай',

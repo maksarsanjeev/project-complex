@@ -1789,6 +1789,46 @@ module SU_MCP
   # Main thread queue processor (called by UI.start_timer)
   # ---------------------------------------------------------------------------
 
+  # ---------------------------------------------------------------------------
+  # Проверка результата — против «тихого успеха»
+  #
+  # Класс ошибок, на котором мы уже обожглись: вызов возвращает успех, а
+  # эффекта нет. Так «тедди возвращён» оказался неправдой — команда прошла,
+  # объект не вернулся, и модель честно доложила об успехе вызова.
+  #
+  # Поэтому созданное перечитывается ИЗ МОДЕЛИ и в ответ добавляется confirmed.
+  # Делается в одном месте, а не в двадцати обработчиках: забыть в одном из
+  # двадцати — вопрос времени, а забыть в единственном месте трудно.
+  # ---------------------------------------------------------------------------
+  def self.confirm_result(result)
+    return result unless result.is_a?(Hash)
+    return result if result.key?(:confirmed) # обработчик проверил сам
+
+    id = result[:id] || result[:entity_id]
+    return result unless id.is_a?(Integer) || (id.is_a?(String) && id =~ /\A\d+\z/)
+
+    entity = find_entity_by_id(id)
+    result.merge(
+      confirmed: !entity.nil? && entity.valid?,
+      # Габарит созданного — самая дешёвая проверка «то ли получилось».
+      # Наружу в миллиметрах, как и всё остальное.
+      bounds: (bounds_mm(entity) if entity && entity.respond_to?(:bounds))
+    ).compact
+  rescue StandardError => e
+    log "confirm_result failed: #{e.message}"
+    result
+  end
+
+  def self.bounds_mm(entity)
+    bb = entity.bounds
+    return nil unless bb && bb.valid?
+    {
+      min:  pt_mm(bb.min),
+      max:  pt_mm(bb.max),
+      size: [to_mm(bb.width), to_mm(bb.depth), to_mm(bb.height)]
+    }
+  end
+
   def self.process_queue
     # Освежаем визитку примерно раз в 2 секунды (таймер тикает каждые 0.05):
     # пользователь мог сохранить модель под другим именем или открыть другую,
@@ -1814,7 +1854,7 @@ module SU_MCP
 
     begin
       result = send(req[:handler], req[:params])
-      req[:response] = result
+      req[:response] = confirm_result(result)
     rescue => e
       log "Handler error: #{e.class}: #{e.message}"
       log e.backtrace.first(3).join("\n") if e.backtrace

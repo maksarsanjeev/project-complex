@@ -6,6 +6,11 @@ import { useViewport } from './viewport'
 import { useSession } from './session'
 
 interface ChatState {
+  /**
+   * Варианты ответа на заданный моделью вопрос — станут кнопками под вводом.
+   * Живут до следующего сообщения: ответил — выбор снят.
+   */
+  pendingOptions: string[]
   draft: string
   /** Как подключена модель: прямой вызов по ключу или локальный CLI-агент. */
   mode: ProviderTransport
@@ -17,11 +22,13 @@ interface ChatState {
   setModelId: (id: string) => void
   send: () => Promise<void>
   stop: () => void
+  setPendingOptions: (options: string[]) => void
 }
 
 let cancelled = false
 
 export const useChat = create<ChatState>()((set, get) => ({
+  pendingOptions: [],
   draft: '',
   mode: 'api',
   modelId: 'claude-opus-5-api',
@@ -43,7 +50,7 @@ export const useChat = create<ChatState>()((set, get) => ({
       createdAt: new Date().toISOString(),
     }
     useSession.getState().pushMessage(user)
-    set({ draft: '', sending: true })
+    set({ draft: '', sending: true, pendingOptions: [] })
 
     cancelled = false
     try {
@@ -76,6 +83,8 @@ export const useChat = create<ChatState>()((set, get) => ({
     cancelled = true
     set({ sending: false })
   },
+
+  setPendingOptions: (pendingOptions) => set({ pendingOptions }),
 }))
 
 /**

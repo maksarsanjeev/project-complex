@@ -275,6 +275,23 @@ export const SKETCHUP_TOOLS: ToolDef[] = [
     },
   },
   {
+    name: 'su_look',
+    engine: 'sketchup',
+    command: 'POST /view/screenshot',
+    description:
+      'Посмотреть на модель: снимок вьюпорта SketchUp. Картинка возвращается тебе, и ты её ВИДИШЬ. ' +
+      'Пользуйся после построения, чтобы проверить результат глазами, а не только по числам: ' +
+      'габарит может сойтись, а объект оказаться вывернутым, вложенным в соседний или стоять не там. ' +
+      'Если увидел несуразицу — скажи об этом и исправь, а не докладывай об успехе.',
+    parameters: {
+      type: 'object',
+      properties: {
+        width: { type: 'integer', description: 'Ширина снимка, по умолчанию 1000' },
+        height: { type: 'integer', description: 'Высота снимка, по умолчанию 750' },
+      },
+    },
+  },
+  {
     name: 'su_run_ruby',
     engine: 'sketchup',
     command: 'POST /ruby/execute',

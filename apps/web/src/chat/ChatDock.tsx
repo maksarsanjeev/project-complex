@@ -30,6 +30,7 @@ export function ChatDock() {
   const stop = useChat((c) => c.stop)
 
   const providers = useEngines((e) => e.providers)
+  const pendingOptions = useChat((c) => c.pendingOptions)
   const toggleChat = useLayout((l) => l.toggleChat)
 
   const listRef = useRef<HTMLDivElement>(null)
@@ -62,7 +63,17 @@ export function ChatDock() {
   return (
     <div className={s.root}>
       <header className={s.head}>
+        {/*
+          Пока модель отвечает, по шапке бежит штриховка. Мигающей каретки в
+          конце текста мало: ответ часто начинается с вызова инструмента, и
+          несколько секунд не появляется ни буквы — на экране в это время
+          ничего не происходит, и человек решает, что не отправилось.
+          Штриховка видна независимо от прокрутки ленты.
+        */}
+        {sending ? <span className={s.busy} aria-hidden /> : null}
+
         <Label tone="strong">{t('chat.title')}</Label>
+        {sending ? <Label tone="strong">{t('chat.answering')}</Label> : null}
 
         <Segmented options={MODES} value={mode} onChange={setMode} />
 
@@ -99,6 +110,29 @@ export function ChatDock() {
           messages.map((m) => <Message key={m.id} message={m} />)
         )}
       </div>
+
+      {/*
+        Варианты ответа на вопрос модели. Кнопкой отвечать быстрее и точнее,
+        чем перепечатывать вариант руками, — а спрашивает она как раз там, где
+        от точности ответа зависит результат.
+      */}
+      {pendingOptions.length ? (
+        <div className={s.options}>
+          {pendingOptions.map((option) => (
+            <button
+              key={option}
+              type="button"
+              className={s.option}
+              onClick={() => {
+                setDraft(option)
+                void send()
+              }}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <div className={s.composer}>
         <textarea
