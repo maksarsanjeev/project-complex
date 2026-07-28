@@ -179,7 +179,11 @@ export async function* streamAnswer(input: {
   // человек ждал больше десяти минут, а модель всё это время упиралась в
   // таймауты и в конце сказала, что моста нет. Проверка стоит одного дешёвого
   // запроса и отвечает за секунды.
-  const trouble = await bridgeTrouble(bound)
+  // «Работать без движка» — осознанный ответ на эту же карточку. Проверять
+  // мост снова значит показать её заново, и человек попадает в круг, из
+  // которого нет выхода: любая кнопка возвращает тот же вопрос.
+  const skipCheck = /без движка/i.test(input.text)
+  const trouble = skipCheck ? null : await bridgeTrouble(bound)
   if (trouble) {
     text = trouble.text
     yield { type: 'token', messageId, text }

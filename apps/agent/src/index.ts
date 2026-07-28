@@ -325,7 +325,15 @@ function connect(): void {
     }
   })
 
+  // На умирающем сокете срабатывают ОБА обработчика — 'close' и 'error', — и
+  // каждый планировал переподключение. Одно падение давало два соединения, из
+  // которых одно неизбежно оказывалось мёртвым: gateway слал вызовы в него и
+  // ждал таймаута, а человек видел «движок не отвечает» при живом мосте.
+  let retried = false
+
   const retry = (why: string): void => {
+    if (retried) return
+    retried = true
     stopPolling()
     socket = null
     log(`${why}; следующая попытка через ${Math.round(backoff / 1000)} с`)
