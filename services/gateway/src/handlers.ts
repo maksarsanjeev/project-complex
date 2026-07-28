@@ -239,7 +239,10 @@ export const streamMethods: Record<string, StreamMethod> = {
     // Что реально пришло от страницы. Гадать больше не будем: поля engine и
     // parametric добавлены недавно, и по логу видно только их отсутствие, а не
     // место, где они теряются.
-    console.log(`[запрос ${nowIso()}] поля: ${Object.keys(p).join(', ')}`)
+    console.log(
+      `[запрос ${nowIso()}] engine=${JSON.stringify(p.engine)} ` +
+        `parametric=${JSON.stringify(p.parametric)} model=${JSON.stringify(p.modelId)}`,
+    )
 
     const engine = (s(p.engine) || null) as EngineId | null
     const parametric = (s(p.parametric) || 'ask') as ParametricMode
