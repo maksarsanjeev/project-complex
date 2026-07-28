@@ -2,6 +2,7 @@ import type { ChatEvent, ChatMessage, GraphDoc, ParamValue, Session } from '@com
 import { create } from 'zustand'
 import { transport } from '../api/transport'
 import { useChat } from './chat'
+import { useLoadedModel } from '../viewport/loader'
 import { useModel } from './model'
 
 interface SessionState {
@@ -58,9 +59,17 @@ export const useSession = create<SessionState>()((set, get) => ({
 
   async select(id) {
     set({ loading: true, activeId: id, selectedNodeId: null })
-    // Модель предыдущей сессии убираем СРАЗУ, не дожидаясь ответа сервера:
-    // иначе на время загрузки в новом проекте висит чужая геометрия.
+    // Всё, что принадлежало предыдущему проекту, убираем СРАЗУ, не дожидаясь
+    // ответа сервера: иначе в новом проекте висит чужое.
+    //
+    // Снимок — не единственное такое. Загруженный файлом объект живёт в другом
+    // хранилище и переживал переключение, а карточка с вопросом продолжала
+    // висеть поверх вьюпорта уже нового проекта: вопрос был задан в прошлом
+    // разговоре, отвечать на него здесь бессмысленно.
     useModel.getState().adopt([])
+    useLoadedModel.getState().clear()
+    useChat.getState().setCheckpoint(null)
+    useChat.getState().setPendingOptions([])
     useChat.getState().resetUsage()
     const state = await transport.openSession(id)
     set({
