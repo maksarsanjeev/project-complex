@@ -111,6 +111,15 @@ export async function* runClaudeCode(input: {
 
   const queue = new PieceQueue()
   const defs = availableTools(input.engine ?? sessionEngine(input.sessionId), input.parametric)
+
+  // Что именно выдано модели — по логу, а не по догадкам. Без этой строки
+  // «Grasshopper не работает» неотличимо от «инструменты не дошли»: в ответе
+  // модель про свой список не отчитывается, а спросить её об этом дорого.
+  console.log(
+    `[инструменты ${nowIso()}] движок ${input.engine ?? 'из сессии'}, ` +
+      `параметрика ${input.parametric ?? 'ask'}, всего ${defs.length}, ` +
+      `холст ${defs.filter((d) => d.name.startsWith('gh_')).length}`,
+  )
   const wire = toWireTools(defs)
 
   // Инструменты собираем из тех же описаний, что уходят в OpenRouter, включая
