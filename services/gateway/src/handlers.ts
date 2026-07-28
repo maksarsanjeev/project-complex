@@ -236,6 +236,11 @@ export const streamMethods: Record<string, StreamMethod> = {
     const provider = providers.find((x) => x.id === s(p.modelId))
     const selection = (p.selection as SelectionRef[] | undefined) ?? undefined
 
+    // Что реально пришло от страницы. Гадать больше не будем: поля engine и
+    // parametric добавлены недавно, и по логу видно только их отсутствие, а не
+    // место, где они теряются.
+    console.log(`[запрос ${nowIso()}] поля: ${Object.keys(p).join(', ')}`)
+
     const engine = (s(p.engine) || null) as EngineId | null
     const parametric = (s(p.parametric) || 'ask') as ParametricMode
 
