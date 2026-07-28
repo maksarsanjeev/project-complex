@@ -106,6 +106,9 @@ export async function* runClaudeCode(input: {
    */
   let objectsBefore = -1
 
+  /** Вопрос на чекпойнте отправляется ровно один раз, откуда бы ни пришёл. */
+  let announced = false
+
   const queue = new PieceQueue()
   const defs = availableTools(input.engine ?? sessionEngine(input.sessionId), input.parametric)
   const wire = toWireTools(defs)
@@ -232,6 +235,30 @@ export async function* runClaudeCode(input: {
     },
   })
 
+  /**
+   * Показать проход человеку: прервать модель, забрать снимок, задать вопрос.
+   *
+   * Собрано в одном месте намеренно. Пока это лежало внутри одной ветки
+   * разбора сообщений, ход, закончившийся сразу после вызова инструмента,
+   * уходил молча: флаг стоял, а вопроса не было.
+   */
+  const announce = async (): Promise<void> => {
+    if (announced) return
+    announced = true
+    stoppedByBudget = true
+    await run.interrupt().catch(() => {})
+    await takeSnapshot('rhino', undefined, input.sessionId).catch(() => null)
+    queue.push({
+      kind: 'ask',
+      question:
+        'Проход завершён — модель загружена во вьюпорт, посмотрите. ' +
+        'Это остановка, а не сбой: дальше решаете вы.',
+      options: CHOICES,
+    })
+    queue.push({ kind: 'usage', usage: { ...spent } })
+    console.log(`[чекпойнт ${nowIso()}] проход показан человеку`)
+  }
+
   // Поток SDK и очередь инструментов сливаются в один: первый читаем здесь,
   // вторая наполняется из обработчиков. Читателю снаружи видна одна лента.
   void (async () => {
@@ -258,19 +285,9 @@ export async function* runClaudeCode(input: {
           // а не посреди набора инструментов — иначе часть вызовов останется
           // без ответа, и продолжение начнётся с путаницы.
           if (checkpoint && !stoppedByBudget) {
-            stoppedByBudget = true
-            await run.interrupt().catch(() => {})
-            await takeSnapshot('rhino', undefined, input.sessionId).catch(() => null)
             // Вопрос обязателен. Без него ход просто обрывался: ни карточки,
             // ни текста — модель молча замолкала, и понять это было нельзя.
-            queue.push({
-              kind: 'ask',
-              question:
-                'Проход завершён — модель загружена во вьюпорт, посмотрите. ' +
-                'Продолжать итерации или остановиться?',
-              options: CHOICES,
-            })
-            queue.push({ kind: 'usage', usage: { ...spent } })
+            await announce()
             break
           }
 
@@ -351,6 +368,11 @@ export async function* runClaudeCode(input: {
           })
         }
       }
+      // Ход мог закончиться сам, не дав повода зайти в ветку выше: модель
+      // вызвала инструмент и на этом остановилась. Тогда флаг чекпойнта стоит,
+      // а вопрос никто не отправил — человек видел пустой ответ без карточки.
+      // Поэтому проверяем ещё раз на выходе, а не только внутри цикла.
+      if (checkpoint && !announced) await announce()
       queue.close()
     } catch (error) {
       queue.close(error)
