@@ -238,6 +238,8 @@ export type ChatEvent =
  * структура у нас одна — дерево, — а слово у каждого своё, и в интерфейсе
  * человек видит термин того приложения, в котором работает.
  */
+export type ParametricMode = 'ask' | 'yes' | 'no'
+
 export type SceneNodeKind =
   | 'engine'
   | 'layer'
@@ -607,6 +609,15 @@ export interface Transport {
      * SketchUp из проекта, привязанного к Rhino.
      */
     engine?: EngineId
+    /**
+     * Нужна ли параметрика на Grasshopper.
+     *
+     * Три состояния, а не галочка, и это принципиально: при двух отметка
+     * человека и вопрос модели неизбежно противоречат друг другу. «ask» —
+     * решает человек, и модель обязана спросить прежде чем строить; «yes» и
+     * «no» — решено, спрашивать нечего.
+     */
+    parametric?: ParametricMode
   }): AsyncIterable<ChatEvent>
 
   runJob(spec: JobSpec): AsyncIterable<JobEvent>

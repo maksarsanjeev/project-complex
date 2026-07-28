@@ -9,6 +9,7 @@ import type {
   JobSpec,
   KnowledgeHit,
   ModelProvider,
+  ParametricMode,
   SelectionRef,
 } from '@complex/protocol'
 import * as agents from './agents.ts'
@@ -236,8 +237,9 @@ export const streamMethods: Record<string, StreamMethod> = {
     const selection = (p.selection as SelectionRef[] | undefined) ?? undefined
 
     const engine = (s(p.engine) || null) as EngineId | null
+    const parametric = (s(p.parametric) || 'ask') as ParametricMode
 
-    for await (const event of streamAnswer({ sessionId, text, provider, selection, engine })) {
+    for await (const event of streamAnswer({ sessionId, text, provider, selection, engine, parametric })) {
       yield event satisfies ChatEvent
     }
   },

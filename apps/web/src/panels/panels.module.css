@@ -626,3 +626,42 @@
   align-items: baseline;
   min-width: 0;
 }
+
+/* Параметрика: три состояния в ряд под списком движков. Кнопками, а не
+   галочкой — «спросить» это отдельное решение, а не отсутствие отметки. */
+.parametric {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 0 2px;
+  border-top: var(--hair) solid var(--line);
+}
+
+.parametricRow {
+  display: flex;
+  gap: 4px;
+}
+
+.parametricButton {
+  flex: 1;
+  height: 22px;
+  border: var(--hair) solid var(--line-2);
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  cursor: pointer;
+}
+
+.parametricButton:hover {
+  border-color: var(--ink-1);
+  color: var(--ink-1);
+}
+
+.parametricButton[data-on] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}

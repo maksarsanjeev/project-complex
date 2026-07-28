@@ -1,6 +1,7 @@
 import type {
   ChatEvent,
   EngineId,
+  ParametricMode,
   ChatMessage,
   ModelProvider,
   SelectionRef,
@@ -133,8 +134,11 @@ export async function* streamAnswer(input: {
    * что переключатель работает.
    */
   engine?: EngineId | null
+  /** Нужна ли параметрика: решено человеком или оставлено на вопрос модели. */
+  parametric?: ParametricMode
 }): AsyncGenerator<ChatEvent> {
   const bound = input.engine ?? repo.sessionEngine(input.sessionId)
+  const parametric: ParametricMode = input.parametric ?? 'ask'
   const messageId = newId('m')
   const model = input.provider?.model || config.defaultModel
 
@@ -187,7 +191,7 @@ export async function* streamAnswer(input: {
 
   // Строки, которые меняются от хода к ходу: кем вызвали, что запущено и что
   // выделено.
-  const contextText = [describeModel(input.provider, model), engineSummary(), describeSelection(input.selection)]
+  const contextText = [describeModel(input.provider, model), describeParametric(parametric, bound), engineSummary(), describeSelection(input.selection)]
     .filter(Boolean)
     .join('\n\n')
 
@@ -204,7 +208,7 @@ export async function* streamAnswer(input: {
             systemPrompt: [SYSTEM_PROMPT, contextText].filter(Boolean).join('\n\n'),
             selection: input.selection,
           })
-        : runOpenRouter({ sessionId: input.sessionId, model, contextText, engine: bound })
+        : runOpenRouter({ sessionId: input.sessionId, model, contextText, engine: bound, parametric })
 
     for await (const piece of pieces) {
       if (piece.kind === 'text') {
@@ -282,8 +286,9 @@ async function* runOpenRouter(input: {
   model: string
   contextText: string
   engine: EngineId | null
+  parametric: ParametricMode
 }): AsyncGenerator<LlmPiece> {
-  const tools = availableTools(input.engine)
+  const tools = availableTools(input.engine, input.parametric)
   const conversation: WireMessage[] = [
     {
       role: 'system',
@@ -463,6 +468,41 @@ async function bridgeTrouble(
       options: [`Мост поднят — проверь ещё раз`, 'Работать без движка'],
     }
   }
+}
+
+/**
+ * Что человек решил про параметрику — и что из этого следует для модели.
+ *
+ * Три состояния, потому что при двух отметка человека и вопрос модели
+ * противоречат друг другу: отметил «не нужна», а модель всё равно спрашивает.
+ * «Спросить» — это не отсутствие решения, а решение спросить.
+ */
+function describeParametric(mode: ParametricMode, engine: EngineId | null): string {
+  if (engine !== 'rhino') return ''
+
+  if (mode === 'yes') {
+    return (
+      'Человек включил параметрику: работа должна получиться управляемой из Grasshopper. ' +
+      'Инструменты холста (gh_*) тебе выданы. Спрашивать про это не надо — решено. ' +
+      'Помни: готовое тело параметрическим не станет, историю построения оно не хранит. ' +
+      'Поэтому решай устройство графа ДО постройки, а не приделывай его после.'
+    )
+  }
+
+  if (mode === 'no') {
+    return (
+      'Человек выключил параметрику: строим обычной геометрией, Grasshopper не привлекаем. ' +
+      'Инструментов холста у тебя нет, и предлагать их не надо — это уже решено.'
+    )
+  }
+
+  return (
+    'Про параметрику человек не решил. Если задача выиграет от управляемости размерами — ' +
+    'спроси ОДИН раз, прежде чем строить, через инструмент вопроса: нужна ли параметрика ' +
+    'на Grasshopper. Объясни коротко, чем это обернётся: граф строит геометрию заново, ' +
+    'и приделать его к уже готовым телам нельзя — историю построения они не хранят. ' +
+    'Задача простая и параметры менять незачем — не спрашивай вовсе, просто строй.'
+  )
 }
 
 /**

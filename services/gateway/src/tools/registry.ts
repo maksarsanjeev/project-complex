@@ -1,7 +1,8 @@
 import { config } from '../config.ts'
-import type { EngineDescriptor, EngineId } from '@complex/protocol'
+import type { EngineDescriptor, EngineId, ParametricMode } from '@complex/protocol'
 import { invoke, onlineEngines } from '../agents.ts'
 import { BLENDER_TOOLS } from './blender.ts'
+import { GRASSHOPPER_TOOLS } from './grasshopper.ts'
 import { ITERATION_TOOL } from './iteration.ts'
 import { MCNEEL_TOOLS } from './mcneel.ts'
 import { RHINO_TOOLS } from './rhino.ts'
@@ -75,7 +76,7 @@ function bridgeAllows(tool: ToolDef): boolean {
 }
 
 /** Инструменты для текущего состояния движков — то, что уйдёт в запрос. */
-export function availableTools(bound?: EngineId | null): ToolDef[] {
+export function availableTools(bound?: EngineId | null, parametric?: ParametricMode): ToolDef[] {
   const usable = new Set(
     onlineEngines()
       .filter(unitsUsable)
@@ -86,6 +87,9 @@ export function availableTools(bound?: EngineId | null): ToolDef[] {
   return [
     ASK_TOOL,
     ITERATION_TOOL,
+    // Холст Grasshopper выдаём только когда параметрика решена положительно:
+    // четырнадцать описаний оплачиваются на каждом круге, а нужны редко.
+    ...(parametric === 'yes' && bound === 'rhino' ? GRASSHOPPER_TOOLS : []),
     ...ALL.filter(
       (t) =>
         usable.has(t.engine) &&

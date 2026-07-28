@@ -264,7 +264,52 @@ function Engines() {
           </span>
         </button>
       ))}
+      <Parametric />
       <PullModel />
+    </div>
+  )
+}
+
+/**
+ * Параметрика на Grasshopper — три состояния, а не галочка.
+ *
+ * При двух отметка человека и вопрос модели противоречат друг другу: отметил
+ * «не нужна», а она всё равно спрашивает. Здесь «спросить» — не пустое место,
+ * а отдельное решение, и оно по умолчанию: модель задаст вопрос один раз,
+ * прежде чем строить, и только если задача от параметрики выиграет.
+ *
+ * Показывается только у Rhino: Grasshopper есть только там.
+ */
+function Parametric() {
+  const bound = useEngines((e) => e.boundEngine)
+  const mode = useEngines((e) => e.parametric)
+  const setMode = useEngines((e) => e.setParametric)
+
+  if (bound !== 'rhino') return null
+
+  const modes: Array<{ id: 'ask' | 'yes' | 'no'; label: string; hint: string }> = [
+    { id: 'ask', label: 'спросить', hint: 'модель спросит сама, если задача того стоит' },
+    { id: 'yes', label: 'нужна', hint: 'работа должна управляться из Grasshopper' },
+    { id: 'no', label: 'не нужна', hint: 'обычная геометрия, холст не привлекаем' },
+  ]
+
+  return (
+    <div className={s.parametric}>
+      <Label>Параметрика</Label>
+      <div className={s.parametricRow}>
+        {modes.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={s.parametricButton}
+            data-on={item.id === mode || undefined}
+            title={item.hint}
+            onClick={() => setMode(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

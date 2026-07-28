@@ -1,6 +1,7 @@
 import type {
   ChatAttachment,
   EngineId,
+  ParametricMode,
   ChatEvent,
   EngineDescriptor,
   GraphDoc,
@@ -174,6 +175,8 @@ export class WsTransport implements Transport {
     selection?: SelectionRef[]
     /** Движок, выбранный в панели: он и решает, чем модели разрешено работать. */
     engine?: EngineId
+    /** Нужна ли параметрика на Grasshopper. */
+    parametric?: ParametricMode
   }): AsyncIterable<ChatEvent> {
     return this.stream<ChatEvent>('sendMessage', input)
   }

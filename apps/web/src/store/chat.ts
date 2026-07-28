@@ -82,6 +82,7 @@ export const useChat = create<ChatState>()((set, get) => ({
         // разрешено работать. Раньше сервер смотрел на движок, записанный в
         // сессии при создании, и переключатель ничего не менял.
         engine: useEngines.getState().boundEngine,
+        parametric: useEngines.getState().parametric,
         selection: currentSelection(),
       })) {
         if (cancelled) break
