@@ -37,7 +37,15 @@ const INVOKE_TIMEOUT_MS = 25_000
  * места вызова: забыть флаг легче, чем ошибиться в списке.
  */
 const SLOW_TIMEOUT_MS = 300_000
-const SLOW = /run_python|run_csharp|execute|snapshot|boolean|fillet|chamfer|geometry|render/i
+
+/**
+ * Правило перевёрнуто: долгим считается ВСЁ, кроме явно перечисленного
+ * лёгкого. Список «что долгое» уже подвёл — в него не попал `GET /model/mesh`,
+ * которым забирается модель из SketchUp, и самый тяжёлый вызов из всех получил
+ * двадцать пять секунд вместо пяти минут. Забыть добавить тяжёлое легче, чем
+ * забыть добавить лёгкое: лёгкие маршруты наперечёт и меняются редко.
+ */
+const FAST = /(GET \/model\/(info|layers|materials|components|selection))|get_context|list_objects|list_commands|api_docs|document_summary|get_selection|model_info/i
 
 /**
  * Как часто спрашиваем агента, жив ли он.
@@ -251,7 +259,7 @@ export function invoke(input: {
 
   const id = newId('inv')
   return new Promise<unknown>((resolve, reject) => {
-    const wait = SLOW.test(input.command) ? SLOW_TIMEOUT_MS : INVOKE_TIMEOUT_MS
+    const wait = FAST.test(input.command) ? INVOKE_TIMEOUT_MS : SLOW_TIMEOUT_MS
     const timer = setTimeout(() => {
       agent.pending.delete(id)
       reject(new Error(`движок ${input.engine} не ответил за ${wait / 1000} с`))
