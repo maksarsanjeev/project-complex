@@ -49,6 +49,8 @@ export function Checkpoint() {
           <span className={s.hint}>работа приостановлена</span>
         </header>
 
+        {/* Длинные отчёты — норма: модель перечисляет десятки деталей. Текст
+            прокручивается внутри, кнопки остаются на месте. */}
         <div className={s.body}>{checkpoint.question}</div>
 
         <div className={s.actions}>
