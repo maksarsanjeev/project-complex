@@ -39,6 +39,32 @@ interface SessionState {
 
 const emptyGraph: GraphDoc = { nodes: [], edges: [] }
 
+/**
+ * Какой проект был открыт последним.
+ *
+ * Держим в localStorage, а не на сервере: это состояние ЭТОГО браузера, а не
+ * пользователя. С двух вкладок люди смотрят разные проекты, и синхронизировать
+ * их через сервер значило бы мешать друг другу.
+ */
+const LAST_SESSION_KEY = 'complex.lastSession'
+
+function readLastSession(): string | null {
+  try {
+    return localStorage.getItem(LAST_SESSION_KEY)
+  } catch {
+    // Приватный режим и запрет хранилища — не повод падать: откроем первый.
+    return null
+  }
+}
+
+function rememberSession(id: string): void {
+  try {
+    localStorage.setItem(LAST_SESSION_KEY, id)
+  } catch {
+    /* пусто */
+  }
+}
+
 export const useSession = create<SessionState>()((set, get) => ({
   sessions: [],
   trash: [],
@@ -52,13 +78,23 @@ export const useSession = create<SessionState>()((set, get) => ({
   async init() {
     const [sessions, trash] = await Promise.all([transport.listSessions(), transport.listTrash()])
     set({ sessions, trash })
-    const first = sessions[0]
-    if (first) await get().select(first.id)
+
+    // Открываем ТОТ проект, в котором работали, а не первый в списке.
+    //
+    // Без этого перезагрузка страницы выбрасывала в чужой проект вместе с его
+    // моделью — и выглядело это как «во вьюпорте осталась модель предыдущего
+    // проекта», хотя очистка работала правильно: просто открывался не тот
+    // проект. Список отсортирован по времени изменения, и первым оказывался
+    // тот, где последним отвечала модель.
+    const remembered = readLastSession()
+    const wanted = sessions.find((x) => x.id === remembered) ?? sessions[0]
+    if (wanted) await get().select(wanted.id)
     else set({ loading: false })
   },
 
   async select(id) {
     set({ loading: true, activeId: id, selectedNodeId: null })
+    rememberSession(id)
     // Всё, что принадлежало предыдущему проекту, убираем СРАЗУ, не дожидаясь
     // ответа сервера: иначе в новом проекте висит чужое.
     //
