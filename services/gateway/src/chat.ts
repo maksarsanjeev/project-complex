@@ -211,6 +211,11 @@ export async function* streamAnswer(input: {
             // в одну строку — делить её тут больше не за чем.
             systemPrompt: [SYSTEM_PROMPT, contextText].filter(Boolean).join('\n\n'),
             selection: input.selection,
+            // Оба поля обязаны быть здесь. Их отсутствие типы не ловят —
+            // они необязательные, — и путь Agent SDK молча работал со всеми
+            // движками сразу и без Grasshopper, пока OpenRouter вёл себя верно.
+            engine: bound,
+            parametric,
           })
         : runOpenRouter({ sessionId: input.sessionId, model, contextText, engine: bound, parametric })
 
