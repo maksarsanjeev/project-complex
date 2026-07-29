@@ -21,7 +21,17 @@ import type { ToolDef } from './types.ts'
  * SketchUp, тогда построю».
  */
 
-const ALL: ToolDef[] = [...SKETCHUP_TOOLS, ...RHINO_TOOLS, ...MCNEEL_TOOLS, ...BLENDER_TOOLS]
+// Grasshopper обязан быть ЗДЕСЬ, а не только в списке для модели: по этому
+// массиву строится карта имён, по которой вызовы и исполняются. Пока его тут
+// не было, модель видела инструменты холста, вызывала их и получала
+// «инструмента gh_start не существует» — от нас же.
+const ALL: ToolDef[] = [
+  ...SKETCHUP_TOOLS,
+  ...RHINO_TOOLS,
+  ...MCNEEL_TOOLS,
+  ...GRASSHOPPER_TOOLS,
+  ...BLENDER_TOOLS,
+]
 
 /** Имя инструмента-вопроса: цикл разговора обрабатывает его сам, без движка. */
 export const ASK_TOOL_NAME = ASK_TOOL.name
@@ -93,6 +103,10 @@ export function availableTools(bound?: EngineId | null, parametric?: ParametricM
     ...ALL.filter(
       (t) =>
         usable.has(t.engine) &&
+        // Холст выдаётся строкой выше и только при включённой параметрике.
+        // Здесь его надо пропустить, иначе он попадёт в список дважды и
+        // будет публиковаться всегда — ровно то, чего мы избегали.
+        !t.name.startsWith('gh_') &&
         bridgeAllows(t) &&
         // Движок сессии — не подсказка, а ограничение. Пока инструменты
         // публиковались для всех запущенных приложений сразу, модель уходила
