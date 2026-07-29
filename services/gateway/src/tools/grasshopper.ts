@@ -83,7 +83,10 @@ export const GRASSHOPPER_TOOLS: ToolDef[] = [
         },
         wires: {
           type: 'array',
-          description: 'Провода: {SrcKey, Src, DstKey, Dst}. Ключи — те, что назначены выше.',
+          description:
+            'Провода: {SrcKey, Src, DstKey, Dst}. Ключи — те, что назначены выше. ' +
+            'У параметра-источника (ползунок) имя выхода не принимается: Src: "0" ' +
+            'или пустая строка. У обычных компонентов — имя выхода.',
           items: { type: 'object' },
         },
         solve: { type: 'boolean', description: 'Пересчитать холст в конце' },
