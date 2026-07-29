@@ -251,7 +251,7 @@ export async function* runClaudeCode(input: {
    * разбора сообщений, ход, закончившийся сразу после вызова инструмента,
    * уходил молча: флаг стоял, а вопроса не было.
    */
-  const announce = async (): Promise<void> => {
+  const announce = async (): Promise<boolean> => {
     // Параметрика включена, а на холсте пусто — это не завершённый проход,
     // а невыполненное задание. Решает счётчик компонентов, а не намерение
     // модели: уговорить её подсказкой уже пробовали, она построила всё
@@ -267,9 +267,9 @@ export async function* runClaudeCode(input: {
           '',
         ].join('\n'),
       })
-      return
+      return false
     }
-    if (announced) return
+    if (announced) return false
     announced = true
     stoppedByBudget = true
     await run.interrupt().catch(() => {})
@@ -283,6 +283,7 @@ export async function* runClaudeCode(input: {
     })
     queue.push({ kind: 'usage', usage: { ...spent } })
     console.log(`[чекпойнт ${nowIso()}] проход показан человеку`)
+    return true
   }
 
   // Поток SDK и очередь инструментов сливаются в один: первый читаем здесь,
