@@ -108,6 +108,8 @@ export async function* runClaudeCode(input: {
 
   /** Вопрос на чекпойнте отправляется ровно один раз, откуда бы ни пришёл. */
   let announced = false
+  /** Сколько кадров пришло от SDK — по нему видно, дошло ли до работы. */
+  let seen = 0
 
   const queue = new PieceQueue()
   const defs = availableTools(input.engine ?? sessionEngine(input.sessionId), input.parametric)
@@ -291,6 +293,7 @@ export async function* runClaudeCode(input: {
   void (async () => {
     try {
       for await (const message of run) {
+        seen += 1
         if (message.type === 'assistant') {
           const used = message.message?.usage as
             | {
