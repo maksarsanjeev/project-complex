@@ -252,6 +252,23 @@ export async function* runClaudeCode(input: {
    * уходил молча: флаг стоял, а вопроса не было.
    */
   const announce = async (): Promise<void> => {
+    // Параметрика включена, а на холсте пусто — это не завершённый проход,
+    // а невыполненное задание. Решает счётчик компонентов, а не намерение
+    // модели: уговорить её подсказкой уже пробовали, она построила всё
+    // обычным способом и даже не объяснила почему.
+    if (input.parametric === 'yes' && !(await canvasReady())) {
+      checkpoint = false
+      queue.push({
+        kind: 'text',
+        text: [
+          '',
+          '[параметрика включена, но холст Grasshopper пуст — проход не принят,',
+          'собери граф или объясни, почему это невозможно]',
+          '',
+        ].join('\n'),
+      })
+      return
+    }
     if (announced) return
     announced = true
     stoppedByBudget = true
@@ -426,6 +443,24 @@ const BUILDING = new Set(['mc_run_python', 'mc_run_command', 'rh_run_python', 'r
  * дёргать его после каждого скрипта значило бы платить за проверку дороже,
  * чем за работу. `get_context` заведён у McNeel ровно для такого.
  */
+/** Есть ли на холсте Grasshopper хоть один компонент. */
+async function canvasReady(): Promise<boolean> {
+  try {
+    const raw = (await agents.invoke({
+      engine: 'rhino',
+      command: 'mc:get_context',
+      params: {},
+    })) as { output?: string }
+    const box = JSON.parse(String(raw?.output ?? '{}')) as {
+      grasshopper?: { componentCount?: number }
+    }
+    return (box.grasshopper?.componentCount ?? 0) > 0
+  } catch {
+    // Спросить не удалось — не повод держать работу: пропускаем проверку.
+    return true
+  }
+}
+
 async function objectCount(): Promise<number> {
   try {
     const raw = (await agents.invoke({
