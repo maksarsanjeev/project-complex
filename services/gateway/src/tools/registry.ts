@@ -1,7 +1,6 @@
 import { config } from '../config.ts'
 import type { EngineDescriptor, EngineId, ParametricMode } from '@complex/protocol'
 import { invoke, onlineEngines } from '../agents.ts'
-import { BLENDER_TOOLS } from './blender.ts'
 import { BLENDER_AI_TOOLS } from './blenderAi.ts'
 import { GRASSHOPPER_TOOLS } from './grasshopper.ts'
 import { ITERATION_TOOL } from './iteration.ts'
@@ -32,7 +31,9 @@ const ALL: ToolDef[] = [
   ...MCNEEL_TOOLS,
   ...GRASSHOPPER_TOOLS,
   ...BLENDER_AI_TOOLS,
-  ...BLENDER_TOOLS,
+  // Старый набор ahujasid убран из публикации: его команды идут на 9876, где
+  // никого нет, а имена так похожи на новые, что модель выбрала именно его и
+  // получила отказ соединения. Файл оставлен на случай возврата.
 ]
 
 /** Имя инструмента-вопроса: цикл разговора обрабатывает его сам, без движка. */
