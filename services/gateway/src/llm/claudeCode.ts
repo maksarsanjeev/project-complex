@@ -15,6 +15,7 @@ import {
 import type { JsonSchema } from '../tools/types.ts'
 import { PieceQueue, type LlmPiece } from './piece.ts'
 import { toZodShape } from './schema.ts'
+import { describe as describeSpend } from './spend.ts'
 
 /**
  * Модель через Claude Agent SDK — тот же движок, что у Claude Code, только
@@ -92,6 +93,9 @@ export async function* runClaudeCode(input: {
   // слишком поздно, чтобы на него реагировать. Считаем по сообщениям модели —
   // в каждом лежит расход его собственного обращения к API.
   const spent = { prompt: 0, completion: 0, cached: 0 }
+  // Сырые части считаем отдельно: без них нельзя отличить новый ввод от
+  // перечитанного из кэша, а именно перечитывание раздувает суммы в разы.
+  const parts = { input: 0, cacheWrite: 0, cacheRead: 0, output: 0 }
   let stoppedByBudget = false
   let lastTool = ''
   /** Чекпойнт за ход бывает один: дальше решает человек. */
@@ -309,6 +313,11 @@ export async function* runClaudeCode(input: {
             spent.prompt +=
               (used.input_tokens ?? 0) + cached + (used.cache_creation_input_tokens ?? 0)
             spent.completion += used.output_tokens ?? 0
+
+            parts.input += used.input_tokens ?? 0
+            parts.cacheRead += cached
+            parts.cacheWrite += used.cache_creation_input_tokens ?? 0
+            parts.output += used.output_tokens ?? 0
           }
 
           // Чекпойнт по появлению геометрии: обрываем на границе хода модели,
@@ -403,6 +412,10 @@ export async function* runClaudeCode(input: {
       // а вопрос никто не отправил — человек видел пустой ответ без карточки.
       // Поэтому проверяем ещё раз на выходе, а не только внутри цикла.
       if (checkpoint && !announced) await announce()
+
+      // Приведённый расход рядом с сырым: без этой строки миллион в логе
+      // читается как дорогая работа, хотя новых токенов там тридцать тысяч.
+      console.log(`[расход ${nowIso()}] ${describeSpend(parts, input.model)}`)
       queue.close()
     } catch (error) {
       queue.close(error)
