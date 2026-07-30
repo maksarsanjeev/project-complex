@@ -26,6 +26,28 @@ const URL = `http://${HOST}:${PORT}/mcp`
 /** Приставка, по которой агент узнаёт команду этого моста. */
 export const PREFIX = 'bl:'
 
+/**
+ * Очередь обращений: к мосту ходим строго по одному.
+ *
+ * Причина не в осторожности, а в наблюдении. При параллельных вызовах сессия
+ * разъезжается: приходят таймауты, WinError 10038 «операция на объекте, не
+ * являющемся сокетом», и — самое опасное — ответ на один запрос с ошибкой от
+ * другого. Модель это заметила сама и отказалась работать, совершенно
+ * правильно: доверять чтению сцены после такого нельзя.
+ *
+ * Тот же урок мы уже получали от моста Rhino. Чужие мосты рассчитаны на
+ * последовательные вызовы, и наша задача — не разгонять их, а выстроить.
+ */
+let queue: Promise<unknown> = Promise.resolve()
+
+function serialize<T>(job: () => Promise<T>): Promise<T> {
+  const next = queue.then(job, job)
+  // Хвост очереди не должен ломаться от чужой ошибки: гасим её здесь, а
+  // настоящему вызову она уходит своим путём.
+  queue = next.catch(() => undefined)
+  return next
+}
+
 let session: string | null = null
 let handshake: Promise<void> | null = null
 let nextId = 0
@@ -56,10 +78,19 @@ async function post(body: unknown, expectAnswer = true): Promise<unknown> {
   const text = await response.text()
   const line = text.split('\n').find((l) => l.startsWith('data:')) ?? text
   const frame = JSON.parse(line.replace(/^data:\s*/, '')) as {
+    id?: number
     result?: unknown
     error?: { message?: string }
   }
   if (frame.error) throw new Error(frame.error.message ?? 'Blender отказал без объяснения')
+
+  // Сверяем, тому ли запросу пришёл ответ. Без этой проверки перепутанные
+  // ответы выглядят как правдоподобные данные — и модель строит по чужому
+  // состоянию сцены, ничего не подозревая.
+  const asked = (body as { id?: number }).id
+  if (asked !== undefined && frame.id !== undefined && frame.id !== asked) {
+    throw new Error(`Blender ответил не на тот запрос: ждали ${asked}, пришёл ${frame.id}`)
+  }
   return frame.result
 }
 
@@ -104,6 +135,10 @@ export async function alive(): Promise<boolean> {
 }
 
 export async function call(tool: string, args: Record<string, unknown>): Promise<unknown> {
+  return serialize(() => callOne(tool, args))
+}
+
+async function callOne(tool: string, args: Record<string, unknown>): Promise<unknown> {
   await ready()
 
   const result = (await post({
