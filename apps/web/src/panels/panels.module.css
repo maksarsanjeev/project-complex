@@ -665,3 +665,63 @@
   border-color: var(--accent);
   color: var(--accent-ink);
 }
+
+/* Справка по мостам. Свёрнута, пока всё работает: инструкция нужна ровно в тот
+   момент, когда мост отвалился, и уходить за ней в документацию человек не
+   станет — он напишет, что всё сломалось. */
+.help {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: var(--hair) solid var(--line);
+}
+
+.helpToggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  cursor: pointer;
+  text-align: left;
+}
+
+.helpToggle:hover {
+  color: var(--ink-1);
+}
+
+/* Отвалившийся мост называем прямо в свёрнутом виде: иначе про справку
+   вспомнят только после того, как решат, что сломался сам сервис. */
+.helpAlarm {
+  color: var(--accent);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.helpBody {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: var(--hair) solid var(--line);
+}
+
+.helpList {
+  margin: 0;
+  padding-left: 18px;
+  font-size: var(--fs-micro);
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.helpList li {
+  margin-bottom: 3px;
+}
