@@ -1,5 +1,7 @@
 import type { EngineId, ModelSnapshot, SceneNode } from '@complex/protocol'
+import { useMemo } from 'react'
 import { create } from 'zustand'
+import { useEngines } from './engine'
 import { transport } from '../api/transport'
 import { useSession } from './session'
 import { useViewport } from './viewport'
@@ -45,6 +47,21 @@ interface ModelState {
   /** Показать готовые снимки — ими пользуется переключение сессий. */
   adopt: (snapshots: ModelSnapshot[]) => void
   clear: () => void
+}
+
+/**
+ * Снимки ТОЛЬКО выбранного движка.
+ *
+ * Раньше вьюпорт показывал все ветки сразу — «проект бывает открыт в трёх
+ * приложениях». На деле это означало, что модель кафе из SketchUp на триста
+ * тысяч треугольников закрывала собой работу в Rhino, ради которой человек
+ * сюда и пришёл. Выбор движка должен решать и здесь, как он уже решает состав
+ * инструментов.
+ */
+export function useVisibleSnapshots(): ModelSnapshot[] {
+  const all = useModel((s) => s.snapshots)
+  const bound = useEngines((e) => e.boundEngine)
+  return useMemo(() => all.filter((s) => s.engine === bound), [all, bound])
 }
 
 export const useModel = create<ModelState>()((set) => ({

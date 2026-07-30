@@ -19,7 +19,7 @@ import { t } from '../i18n'
 import { NODE_KINDS } from '../nodes/catalog'
 import { useEngines } from '../store/engine'
 import { useLayout } from '../store/layout'
-import { ENGINE_LABEL, useModel } from '../store/model'
+import { ENGINE_LABEL, useModel, useVisibleSnapshots } from '../store/model'
 import { useSession } from '../store/session'
 import { useViewport } from '../store/viewport'
 import { IdChip, Label, NumField, Section, StatusMark, type MarkState } from '../ui'
@@ -114,7 +114,7 @@ function PartInspector() {
   const selected = useViewport((v) => v.selected)
   // Ищем в том же дереве, что показывает аутлайнер, — иначе выделение
   // настоящей части не находилось бы среди демонстрационных.
-  const snapshots = useModel((m) => m.snapshots)
+  const snapshots = useVisibleSnapshots()
   const rows = useMemo(
     // Нет снимка — нет и дерева. Раньше сюда подставлялись узлы демо-башни,
     // и новый проект открывался со списком деталей, которых никто не строил.
@@ -327,7 +327,7 @@ function PullModel() {
   const engines = useEngines((e) => e.engines)
   const pull = useModel((m) => m.pull)
   const loading = useModel((m) => m.loading)
-  const snapshots = useModel((m) => m.snapshots)
+  const snapshots = useVisibleSnapshots()
   const error = useModel((m) => m.error)
 
   const online = engines.some((e) => e.id === bound && e.status === 'online')

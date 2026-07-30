@@ -59,7 +59,7 @@ export function Checkpoint() {
               key={option}
               type="button"
               className={cx(s.button, index === 0 && s['button--primary'])}
-              onClick={() => answer(option)}
+              onClick={() => (index === 0 ? answer(option) : stop())}
             >
               {option}
             </button>

@@ -1,7 +1,7 @@
 import { Eye, EyeOff, Lock, Unlock } from 'lucide-react'
 import { useMemo } from 'react'
 import { t } from '../i18n'
-import { useModel } from '../store/model'
+import { useVisibleSnapshots } from '../store/model'
 import { RenameField } from './RenameField'
 import { useViewport, type PartId } from '../store/viewport'
 import { rowsFromSnapshots, type SceneRow } from '../viewport/sceneTree'
@@ -28,7 +28,7 @@ export function Outliner() {
   const select = useViewport((v) => v.select)
   const selectMany = useViewport((v) => v.selectMany)
 
-  const snapshots = useModel((m) => m.snapshots)
+  const snapshots = useVisibleSnapshots()
 
   // Демо-башня существует только для движков с параметрикой — там же, где
   // панель «параметры модели». С привязанным SketchUp сцена пуста, пока модель

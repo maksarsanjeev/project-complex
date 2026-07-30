@@ -5,7 +5,7 @@ import * as THREE from 'three'
 import { useLayout } from '../store/layout'
 import { useViewport } from '../store/viewport'
 import { MM, towerHeight } from './geometry'
-import { MM as SCENE_MM, useModel } from '../store/model'
+import { MM as SCENE_MM, useModel, useVisibleSnapshots } from '../store/model'
 import { useLoadedModel } from './loader'
 
 /* ────────────────────────── палитра сцены ────────────────────────── */
@@ -233,7 +233,7 @@ function toneForLayer(layer: string): Tone {
  * Поворот на −90° вокруг X: у SketchUp вверх смотрит Z, у three.js — Y.
  */
 function RealModel() {
-  const snapshots = useModel((s) => s.snapshots)
+  const snapshots = useVisibleSnapshots()
   const selected = useViewport((s) => s.selected)
   const select = useViewport((s) => s.select)
   const hidden = useViewport((s) => s.hidden)
@@ -295,7 +295,7 @@ export function Scene() {
   const gizmo = useViewport((s) => s.gizmo)
   const loaded = useLoadedModel((s) => s.object)
   const bounds = useLoadedModel((s) => s.bounds)
-  const snapshots = useModel((s) => s.snapshots)
+  const snapshots = useVisibleSnapshots()
   const snapBounds = useModel((s) => s.bounds)
   const pal = usePalette()
   const invalidate = useThree((s) => s.invalidate)
