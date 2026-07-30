@@ -110,7 +110,10 @@ export const useChat = create<ChatState>()((set, get) => ({
   },
 
   setPendingOptions: (pendingOptions) => set({ pendingOptions }),
-  setCheckpoint: (checkpoint) => set({ checkpoint }),
+  // Появилась карточка — ход для человека закончен, что бы ни думал поток.
+  // Событие вопроса приходит РАНЬШЕ закрытия хода, и пока sending был true,
+  // отправка молча проваливалась: человек жал кнопку, а карточка висела.
+  setCheckpoint: (checkpoint) => set(checkpoint ? { checkpoint, sending: false } : { checkpoint }),
 
   addUsage: (u) =>
     set((s) => ({
