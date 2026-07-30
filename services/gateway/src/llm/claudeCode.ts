@@ -115,6 +115,11 @@ export async function* runClaudeCode(input: {
   /** Сколько кадров пришло от SDK — по нему видно, дошло ли до работы. */
   let seen = 0
 
+  // Снимок берём у ТОГО движка, в котором работали. Было жёстко «rhino» —
+  // код писался, когда других и не было, и в сессии с Blender чекпойнт тянул
+  // чужую сцену.
+  const engineOfTurn = input.engine ?? sessionEngine(input.sessionId) ?? 'rhino'
+
   const queue = new PieceQueue()
   const defs = availableTools(input.engine ?? sessionEngine(input.sessionId), input.parametric)
 
@@ -279,7 +284,7 @@ export async function* runClaudeCode(input: {
     announced = true
     stoppedByBudget = true
     await run.interrupt().catch(() => {})
-    await takeSnapshot('rhino', undefined, input.sessionId).catch(() => null)
+    await takeSnapshot(engineOfTurn, undefined, input.sessionId).catch(() => null)
     queue.push({
       kind: 'ask',
       question:

@@ -35,6 +35,13 @@ function snapshotCall(engine: EngineId): { command: string; params: Record<strin
   if (engine === 'rhino') {
     return { command: 'complex_snapshot', params: { code: rhinoScript('snapshot.py') } }
   }
+  if (engine === 'blender') {
+    // Геометрия забирается экспортом в glb: он отдаёт меши, иерархию и
+    // материалы одним куском, а разбирать его наш вьюпорт уже умеет.
+    // Агент выполнит экспорт и прочитает файл сам — как и у Rhino.
+    return { command: 'complex_snapshot_blender', params: {} }
+  }
+
   return { command: 'GET /model/mesh', params: {} }
 }
 

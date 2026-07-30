@@ -6,7 +6,8 @@ import type {
   GatewayFrame,
 } from '@complex/protocol'
 import { readFile } from 'node:fs/promises'
-import { hostname } from 'node:os'
+import { join } from 'node:path'
+import { hostname, tmpdir } from 'node:os'
 import WebSocket from 'ws'
 import * as blender from './engines/blender.ts'
 import * as blenderAi from './engines/blenderAi.ts'
@@ -188,6 +189,21 @@ async function rhinoSnapshot(params: Record<string, unknown>): Promise<unknown> 
   return JSON.parse(body)
 }
 
+/**
+ * Снимок сцены Blender: экспорт в glb и чтение файла.
+ *
+ * Формат выбран не случайно: glb несёт меши, иерархию и материалы одним
+ * куском, а разбирать его вьюпорт уже умеет — загрузчик писался под
+ * перетаскивание файлов. Собирать треугольники поштучно, как у Rhino, здесь
+ * незачем: у Blender есть штатный экспорт.
+ */
+async function blenderSnapshot(): Promise<unknown> {
+  const path = join(tmpdir(), 'complex-blender-snapshot.glb')
+  await blenderAi.call('export_glb', { filepath: path })
+  const bytes = await readFile(path)
+  return { format: 'glb', base64: bytes.toString('base64'), bytes: bytes.length }
+}
+
 async function execute(frame: Extract<GatewayFrame, { type: 'invoke' }>): Promise<unknown> {
   const engine = inventory.find((e) => e.id === frame.engine)
   const instances = engine?.instances ?? []
@@ -218,6 +234,15 @@ async function execute(frame: Extract<GatewayFrame, { type: 'invoke' }>): Promis
     // Команды нового моста помечены приставкой. Старый клиент оставлен на
     // случай возврата, но новые вызовы уходили именно в него — и падали с
     // отказом соединения на порту, где никого нет.
+    // Снимок сцены: у Blender он собирается экспортом в glb. Файл пишет сам
+    // мост на этой машине, а читаем его мы — как и у Rhino. Через ответ
+    // моста мегабайты геометрии не проходят.
+    if (frame.command === 'complex_snapshot_blender') {
+      return blenderSnapshot().catch((e: unknown) => {
+        forgetSocket('blender')
+        throw e
+      })
+    }
     if (frame.command.startsWith(blenderAi.PREFIX)) {
       return blenderAi
         .call(frame.command.slice(blenderAi.PREFIX.length), frame.params)
