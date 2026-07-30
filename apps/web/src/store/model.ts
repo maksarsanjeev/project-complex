@@ -5,6 +5,24 @@ import { useEngines } from './engine'
 import { transport } from '../api/transport'
 import { useSession } from './session'
 import { useViewport } from './viewport'
+import { useLoadedModel } from '../viewport/loader'
+
+/**
+ * Показать сцену, приехавшую файлом.
+ *
+ * Blender отдаёт геометрию целиком в glb, а не структурой из треугольников: у
+ * него есть штатный экспорт, и разбирать бинарник на сервере ради нашего
+ * формата было бы лишней работой. Загрузчик вьюпорта читает glb с тех пор, как
+ * появилось перетаскивание файлов, — сюда и отдаём.
+ */
+function showGlb(snapshots: ModelSnapshot[]): void {
+  const withGlb = snapshots.find((s) => s.glb)
+  if (!withGlb?.glb) return
+
+  const bytes = Uint8Array.from(atob(withGlb.glb), (c) => c.charCodeAt(0))
+  const file = new File([bytes], 'blender.glb', { type: 'model/gltf-binary' })
+  void useLoadedModel.getState().load(file)
+}
 
 /**
  * Настоящая модель из движка.
@@ -111,6 +129,7 @@ export const useModel = create<ModelState>()((set) => ({
   },
 
   adopt(snapshots) {
+    showGlb(snapshots)
     // Выделение принадлежит модели: при смене проекта оно теряет смысл.
     useViewport.getState().select(null)
     set({ snapshots, bounds: measure(snapshots), error: null })
