@@ -2,6 +2,7 @@ import { config } from '../config.ts'
 import type { EngineDescriptor, EngineId, ParametricMode } from '@complex/protocol'
 import { invoke, onlineEngines } from '../agents.ts'
 import { BLENDER_TOOLS } from './blender.ts'
+import { BLENDER_AI_TOOLS } from './blenderAi.ts'
 import { GRASSHOPPER_TOOLS } from './grasshopper.ts'
 import { ITERATION_TOOL } from './iteration.ts'
 import { MCNEEL_TOOLS } from './mcneel.ts'
@@ -30,6 +31,7 @@ const ALL: ToolDef[] = [
   ...RHINO_TOOLS,
   ...MCNEEL_TOOLS,
   ...GRASSHOPPER_TOOLS,
+  ...BLENDER_AI_TOOLS,
   ...BLENDER_TOOLS,
 ]
 

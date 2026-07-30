@@ -9,6 +9,7 @@ import { readFile } from 'node:fs/promises'
 import { hostname } from 'node:os'
 import WebSocket from 'ws'
 import * as blender from './engines/blender.ts'
+import * as blenderAi from './engines/blenderAi.ts'
 import * as mcneel from './engines/mcneel.ts'
 import * as rhino from './engines/rhino.ts'
 import * as sketchup from './engines/sketchup.ts'
@@ -82,6 +83,15 @@ const ENGINE_META: Record<EngineId, { label: string; port: number; exports: Engi
   },
 }
 
+/**
+ * Живой ли Blender. Мост blender-ai-mcp — отдельный процесс поверх HTTP, а не
+ * сокет в самом приложении, поэтому спрашиваем его рукопожатием, а не портом.
+ */
+async function discoverBlender(): Promise<EngineInstance[]> {
+  if (!(await blenderAi.alive())) return []
+  return [{ id: 'blender', port: 8000, title: 'Blender', units: 'mm' }]
+}
+
 let inventory: EngineDescriptor[] = []
 
 /** Когда сокетные движки опрашивались в прошлый раз и что тогда нашлось. */
@@ -110,7 +120,7 @@ async function poll(): Promise<EngineDescriptor[]> {
   const [su, rh, bl] = await Promise.all([
     sketchup.discover().catch(() => []),
     probeSocket('rhino', rhino.discover),
-    probeSocket('blender', blender.discover),
+    probeSocket('blender', discoverBlender),
   ])
 
   const build = (id: EngineId, instances: EngineInstance[]): EngineDescriptor => ({
