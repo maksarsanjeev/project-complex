@@ -109,6 +109,10 @@ export const useModel = create<ModelState>()((set) => ({
       set((state) => {
         const rest = state.snapshots.filter((x) => x.engine !== engine)
         const snapshots = fresh ? [...rest, fresh] : rest
+        // Сцена, приехавшая файлом, показывается тем же загрузчиком. Кнопка
+        // «забрать модель» идёт этим путём, а не через adopt — и без этой
+        // строки glb доезжал, а вьюпорт оставался пустым.
+        showGlb(snapshots)
         return { snapshots, bounds: measure(snapshots), loading: false }
       })
 
