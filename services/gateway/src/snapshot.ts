@@ -46,6 +46,25 @@ function snapshotCall(engine: EngineId): { command: string; params: Record<strin
 }
 
 function parseSnapshot(engine: EngineId, raw: unknown): Record<string, unknown> {
+  if (engine === 'blender') {
+    // Blender отдаёт сцену файлом, а не структурой. Узлы и части остаются
+    // пустыми намеренно: дерево наполним отдельно из списка объектов, а
+    // геометрию вьюпорт возьмёт из glb — читать его он умеет давно.
+    const box = raw as { format?: string; base64?: string }
+    if (box?.format !== 'glb' || !box.base64) {
+      throw new Error('Blender вернул не glb — снимок не собрался')
+    }
+    return {
+      title: 'Blender',
+      units: 'mm',
+      triangles: 0,
+      truncated: false,
+      nodes: [],
+      parts: [],
+      glb: box.base64,
+    }
+  }
+
   if (engine !== 'rhino') return raw as Record<string, unknown>
 
   // Агент отдаёт уже разобранный файл. Пустота здесь означает, что снимок не
