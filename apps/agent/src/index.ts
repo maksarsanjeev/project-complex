@@ -215,6 +215,17 @@ async function execute(frame: Extract<GatewayFrame, { type: 'invoke' }>): Promis
     })
   }
   if (frame.engine === 'blender') {
+    // Команды нового моста помечены приставкой. Старый клиент оставлен на
+    // случай возврата, но новые вызовы уходили именно в него — и падали с
+    // отказом соединения на порту, где никого нет.
+    if (frame.command.startsWith(blenderAi.PREFIX)) {
+      return blenderAi
+        .call(frame.command.slice(blenderAi.PREFIX.length), frame.params)
+        .catch((e: unknown) => {
+          forgetSocket('blender')
+          throw e
+        })
+    }
     return blender.call(frame.command, frame.params).catch((e: unknown) => {
       forgetSocket('blender')
       throw e
