@@ -74,22 +74,37 @@ async function post(body: unknown, expectAnswer = true): Promise<unknown> {
   if (!response.ok) throw new Error(`Blender ответил ${response.status}`)
   if (!expectAnswer) return null
 
-  // Ответ бывает и обычным JSON, и потоком событий: берём строку данных.
+  // Ответ приходит потоком, и первая строка данных — почти всегда
+  // УВЕДОМЛЕНИЕ, а не результат: мост рассказывает о ходе дела («Listed 3
+  // objects») и только потом отвечает. Брать первую строку значит вернуть
+  // пустоту вместо данных — молча и правдоподобно.
+  //
+  // Поэтому разбираем все строки и берём ту, чей идентификатор совпал с
+  // нашим. Заодно это и есть сверка ответа с запросом: перепутанные ответы
+  // выглядят как настоящие данные, и модель строила бы по чужой сцене.
   const text = await response.text()
-  const line = text.split('\n').find((l) => l.startsWith('data:')) ?? text
-  const frame = JSON.parse(line.replace(/^data:\s*/, '')) as {
-    id?: number
-    result?: unknown
-    error?: { message?: string }
-  }
-  if (frame.error) throw new Error(frame.error.message ?? 'Blender отказал без объяснения')
-
-  // Сверяем, тому ли запросу пришёл ответ. Без этой проверки перепутанные
-  // ответы выглядят как правдоподобные данные — и модель строит по чужому
-  // состоянию сцены, ничего не подозревая.
   const asked = (body as { id?: number }).id
-  if (asked !== undefined && frame.id !== undefined && frame.id !== asked) {
-    throw new Error(`Blender ответил не на тот запрос: ждали ${asked}, пришёл ${frame.id}`)
+  const frames = text
+    .split(String.fromCharCode(10))
+    .filter((l) => l.startsWith('data:'))
+    .map((l) => {
+      try {
+        return JSON.parse(l.replace(/^data:\s*/, '')) as {
+          id?: number
+          result?: unknown
+          error?: { message?: string }
+        }
+      } catch {
+        return null
+      }
+    })
+    .filter((f): f is NonNullable<typeof f> => f !== null)
+
+  const frame = frames.find((f) => f.id !== undefined && f.id === asked) ?? frames.at(-1)
+  if (!frame) throw new Error('Blender вернул пустой ответ')
+  if (frame.error) throw new Error(frame.error.message ?? 'Blender отказал без объяснения')
+  if (asked !== undefined && frame.id !== asked) {
+    throw new Error(`Blender ответил не на тот запрос: ждали ${asked}, пришёл ${String(frame.id)}`)
   }
   return frame.result
 }
