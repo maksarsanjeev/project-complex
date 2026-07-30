@@ -182,6 +182,26 @@ export async function* streamAnswer(input: {
   // «Работать без движка» — осознанный ответ на эту же карточку. Проверять
   // мост снова значит показать её заново, и человек попадает в круг, из
   // которого нет выхода: любая кнопка возвращает тот же вопрос.
+  // Движок выбран, а инструментов для него нет вовсе — значит он ещё не
+  // подключён. Человек молча оказывался в тупике: модель отвечала «строить
+  // нечем», и понять, что виноват переключатель, было нельзя.
+  if (bound === 'blender') {
+    text =
+      'Blender ещё не подключён: мост к нему в работе, инструментов моделирования пока нет. ' +
+      'Переключите движок на Rhino или SketchUp в панели справа — там всё работает. ' +
+      'Сообщение сохранено в переписке.'
+    yield { type: 'token', messageId, text }
+    yield {
+      type: 'ask',
+      messageId,
+      question: text,
+      options: ['Переключиться на Rhino', 'Переключиться на SketchUp'],
+    }
+    appendMessage(input.sessionId, { ...message, content: text, streaming: false, toolCalls: [] })
+    yield { type: 'message-end', messageId }
+    return
+  }
+
   const skipCheck = /без движка/i.test(input.text)
   const trouble = skipCheck ? null : await bridgeTrouble(bound)
   if (trouble) {
